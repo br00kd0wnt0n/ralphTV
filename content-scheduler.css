@@ -1,0 +1,57 @@
+/* Content Scheduler Styles */
+.content-scheduler {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.content-layout {
+  display: flex;
+  gap: 20px;
+}
+
+.uploaded-content, .schedule-grid {
+  background-color: #f4f4f4;
+  border-radius: 8px;
+  padding: 15px;
+}
+
+.uploaded-content {
+  width: 250px;
+}
+
+.schedule-grid {
+  display: flex;
+  flex-grow: 1;
+  gap: 10px;
+}
+
+.schedule-day {
+  background-color: #ffffff;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 10px;
+  min-width: 150px;
+  min-height: 300px;
+}
+
+.content-item, .scheduled-item {
+  background-color: #e9e9e9;
+  margin: 5px 0;
+  padding: 10px;
+  border-radius: 4px;
+  cursor: move;
+}
+
+.content-item.video, .scheduled-item.video {
+  border-left: 4px solid #4CAF50;
+}
+
+.content-item.audio, .scheduled-item.audio {
+  border-left: 4px solid #2196F3;
+}
+
+.upload-section {
+  margin-bottom: 20px;
+}
