@@ -10,8 +10,8 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your_super_secret_key_that_should_
 const users = [
   {
     id: '1',
-    email: 'brook@ralphagency.com',
-    password: bcrypt.hashSync('innovationRules2024!', 10),
+    email: 'brook@ralph.world',
+    password: bcrypt.hashSync('admin123!', 10),
     role: 'admin'
   }
 ];
