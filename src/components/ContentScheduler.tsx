@@ -101,9 +101,10 @@ export default function ContentScheduler() {
       if (source.droppableId === 'library') {
         setAssets(prev => reorder(prev, source.index, destination.index));
       } else if (isDay(source.droppableId)) {
+        const day = source.droppableId as Day;
         setSchedule(prev => ({
           ...prev,
-          [source.droppableId]: reorder(prev[source.droppableId], source.index, destination.index)
+          [day]: reorder(prev[day], source.index, destination.index)
         }));
       }
       return;
