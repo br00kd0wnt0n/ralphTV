@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "start": "node src/index.js",
+    "deploy": "node scripts/deploy.mjs",
     "dev": "node --watch src/index.js",
     "migrate": "node scripts/migrate.mjs",
     "seed:admin": "node scripts/seed-admin.mjs"
