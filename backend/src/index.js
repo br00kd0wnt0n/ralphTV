@@ -11,6 +11,7 @@ import {
   CreateMultipartUploadCommand,
   CompleteMultipartUploadCommand,
   UploadPartCommand,
+  GetObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
@@ -392,6 +393,37 @@ app.get('/assets', authMiddleware, async (_req, res) => {
     return res.json({ assets: rows });
   } catch (e) {
     console.error('assets list error', e);
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Presigned GET URL to read asset for metadata probing
+app.get('/assets/:id/url', authMiddleware, async (req, res) => {
+  if (!hasS3) return res.status(501).json({ message: 'S3 not configured' });
+  const id = req.params.id;
+  try {
+    const { rows } = await pool.query('select s3_key, mime_type from assets where id=$1', [id]);
+    if (!rows.length) return res.status(404).json({ message: 'Not found' });
+    const key = rows[0].s3_key;
+    const cmd = new GetObjectCommand({ Bucket: process.env.S3_BUCKET_UPLOADS, Key: key });
+    const url = await getSignedUrl(s3, cmd, { expiresIn: (parseInt(process.env.PRESIGN_TTL_MINUTES || '10', 10)) * 60 });
+    return res.json({ url });
+  } catch (e) {
+    console.error('asset url error', e);
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Update duration
+app.post('/assets/:id/duration', authMiddleware, async (req, res) => {
+  const id = req.params.id;
+  const { durationSec } = req.body || {};
+  if (typeof durationSec !== 'number' || durationSec <= 0) return res.status(400).json({ message: 'Invalid duration' });
+  try {
+    await pool.query('update assets set duration_sec=$2 where id=$1', [id, Math.round(durationSec)]);
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error('asset duration error', e);
     return res.status(500).json({ message: 'Server error' });
   }
 });

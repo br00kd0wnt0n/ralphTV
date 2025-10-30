@@ -65,3 +65,19 @@ export async function deleteCategory(id: string) {
   if (!res.ok) throw new Error(`deleteCategory failed: ${res.status}`);
   return res.json();
 }
+
+export async function getAssetReadUrl(assetId: string) {
+  const res = await fetch(`${CONFIG.API_BASE_URL}/assets/${encodeURIComponent(assetId)}/url`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`getAssetReadUrl failed: ${res.status}`);
+  return res.json();
+}
+
+export async function setAssetDuration(assetId: string, durationSec: number) {
+  const res = await fetch(`${CONFIG.API_BASE_URL}/assets/${encodeURIComponent(assetId)}/duration`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ durationSec }),
+  });
+  if (!res.ok) throw new Error(`setAssetDuration failed: ${res.status}`);
+  return res.json();
+}

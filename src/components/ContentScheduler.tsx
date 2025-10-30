@@ -10,10 +10,12 @@ import { CONFIG } from '../config';
 import { getDaySchedule, putDaySchedule } from '../api/schedule';
 import { RealtimeClient, buildScheduleTopic } from '../realtime/client';
 import LibraryList from './LibraryList';
-import { updateAssetTags } from '../api/assets';
-import CategoryManager from './CategoryManager';
+import { listCategories, listAssets } from '../api/assets';
+import CategoriesPanel from './CategoriesPanel';
+import LibraryPanel from './LibraryPanel';
 import DayColumn from './DayColumn';
 import WeekSummary from './WeekSummary';
+import { useDurationBackfill } from '../hooks/useDurationBackfill';
 
 export default function ContentScheduler() {
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -42,6 +44,7 @@ export default function ContentScheduler() {
     (async () => {
       if (CONFIG.USE_BACKEND_SCHEDULE && CONFIG.API_BASE_URL) {
         try {
+          // Load schedule docs
           const entries = await Promise.all(
             DAYS.map(async (day) => [day, await getDaySchedule({ channel: CONFIG.CHANNEL, week: CONFIG.WEEK, day })] as const)
           );
@@ -57,6 +60,44 @@ export default function ContentScheduler() {
           setSchedule(nextSchedule);
           setVersions(nextVersions);
           setPlayback({ ...playback });
+
+          // Load categories
+          try {
+            const catRes = await listCategories();
+            if (Array.isArray(catRes.categories)) setCategories(catRes.categories);
+          } catch {}
+
+          // Load assets (for durations, categories, tags)
+          try {
+            const assetRes = await listAssets();
+            if (Array.isArray(assetRes.assets)) {
+              const byId = new Map(assets.map(a => [a.id, a]));
+              const merged: Asset[] = [];
+              for (const a of assetRes.assets) {
+                const existing = byId.get(a.id);
+                const type = (a.file_type === 'video' || a.file_type === 'audio') ? a.file_type : 'unknown';
+                const mapped: Asset = {
+                  id: a.id,
+                  name: existing?.name || a.file_name,
+                  type,
+                  url: existing?.url || '',
+                  mimeType: a.mime_type,
+                  size: Number(a.size),
+                  s3Key: a.s3_key,
+                  uploadedAt: a.uploaded_at,
+                  tags: Array.isArray(a.tags) ? a.tags : [],
+                  vimeoReference: a.vimeo_reference || undefined,
+                  durationSec: typeof a.duration_sec === 'number' ? a.duration_sec : existing?.durationSec,
+                  categoryId: a.category_id || existing?.categoryId,
+                };
+                merged.push(mapped);
+                byId.delete(a.id);
+              }
+              // keep local-only assets (with object URLs)
+              for (const rest of byId.values()) merged.push(rest);
+              setAssets(merged);
+            }
+          } catch {}
           return;
         } catch (e) {
           // fall back to local storage
@@ -73,6 +114,9 @@ export default function ContentScheduler() {
   useEffect(() => { saveAssets(assets); }, [assets]);
   useEffect(() => { saveSchedule(schedule); }, [schedule]);
   useEffect(() => { saveCategories(categories); }, [categories]);
+
+  // Backfill durations from S3 (presigned) for unknown assets
+  useDurationBackfill(assets, setAssets);
 
   // Realtime subscription (optional)
   useEffect(() => {
@@ -172,32 +216,7 @@ export default function ContentScheduler() {
       <DragDropContext onDragEnd={onDragEnd}>
         <div className="content-layout">
           {/* Library */}
-          <Droppable droppableId="library">
-            {(provided) => (
-              <div
-                className="uploaded-content"
-                ref={provided.innerRef}
-                {...provided.droppableProps}
-              >
-                <h3>Uploaded Content</h3>
-                <LibraryList
-                  assets={assets}
-                  categories={categories}
-                  onChangeTags={(assetId, tags) => {
-                    setAssets((prev) => prev.map((a) => a.id === assetId ? { ...a, tags } : a));
-                    // Best-effort backend persistence when configured
-                    if (CONFIG.API_BASE_URL) {
-                      updateAssetTags({ assetId, tags }).catch(() => {});
-                    }
-                  }}
-                  onChangeCategory={(assetId, categoryId) => {
-                    setAssets(prev => prev.map(a => a.id === assetId ? { ...a, categoryId } : a));
-                  }}
-                />
-                {provided.placeholder}
-              </div>
-            )}
-          </Droppable>
+          <LibraryPanel assets={assets} categories={categories} setAssets={setAssets} />
 
           {/* Schedule Grid */}
           <div className="schedule-grid">
@@ -223,12 +242,7 @@ export default function ContentScheduler() {
             ))}
           </div>
           {/* Categories panel */}
-          <div className="uploaded-content" style={{ minWidth: 240 }}>
-            <CategoryManager
-              categories={categories}
-              onChange={setCategories}
-            />
-          </div>
+          <CategoriesPanel categories={categories} onChange={setCategories} apiEnabled={!!CONFIG.API_BASE_URL} />
         </div>
       </DragDropContext>
     </div>

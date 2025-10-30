@@ -29,6 +29,7 @@ export default function LibraryList({
               <div>{asset.name}</div>
               <div style={{ display: 'flex', gap: 6, alignItems: 'center', margin: '4px 0' }}>
                 <label style={{ fontSize: 12 }}>Category</label>
+                {(() => { const c = categories.find(x => x.id === asset.categoryId); return c ? <span title={c.name} style={{ width: 10, height: 10, borderRadius: '50%', background: c.color, display: 'inline-block' }} /> : null; })()}
                 <select
                   value={asset.categoryId || ''}
                   onChange={(e) => onChangeCategory(asset.id, e.target.value || undefined)}

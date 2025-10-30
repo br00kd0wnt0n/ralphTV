@@ -4,10 +4,14 @@ import { makeId } from '../state/schedule';
 
 export default function CategoryManager({
   categories,
-  onChange,
+  onCreate,
+  onUpdate,
+  onDelete,
 }: {
   categories: Category[];
-  onChange: (next: Category[]) => void;
+  onCreate: (name: string, color: string) => void;
+  onUpdate: (id: string, patch: Partial<Category>) => void;
+  onDelete: (id: string) => void;
 }) {
   const [name, setName] = useState('');
   const [color, setColor] = useState('#8e8e8e');
@@ -16,15 +20,15 @@ export default function CategoryManager({
   const add = () => {
     const n = name.trim();
     if (!n || existingNames.has(n.toLowerCase())) return;
-    onChange([...categories, { id: makeId(), name: n, color }]);
+    onCreate(n, color);
     setName('');
   };
 
   const update = (id: string, patch: Partial<Category>) => {
-    onChange(categories.map(c => (c.id === id ? { ...c, ...patch } : c)));
+    onUpdate(id, patch);
   };
 
-  const remove = (id: string) => onChange(categories.filter(c => c.id !== id));
+  const remove = (id: string) => onDelete(id);
 
   return (
     <div>
@@ -47,4 +51,3 @@ export default function CategoryManager({
     </div>
   );
 }
-

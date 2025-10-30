@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { initUpload, putSingle, completeUpload, uploadMultipart, uploadMultipartWithSigner, getPartUrl } from '../api/upload';
 import type { Asset } from '../state/models';
+import { probeDuration } from '../utils/media';
 
 type UploadItem = {
   id: string;
@@ -120,23 +121,4 @@ export default function UploadBar({ onAssetUploaded }: { onAssetUploaded: (asset
   );
 }
 
-async function probeDuration(url: string, type: Asset['type']): Promise<number | undefined> {
-  return new Promise((resolve) => {
-    let el: HTMLMediaElement;
-    if (type === 'video') el = document.createElement('video');
-    else if (type === 'audio') el = document.createElement('audio');
-    else return resolve(undefined);
-    el.preload = 'metadata';
-    el.src = url;
-    const cleanup = () => {
-      el.removeAttribute('src');
-      try { el.load(); } catch {}
-    };
-    el.onloadedmetadata = () => {
-      const d = el.duration;
-      cleanup();
-      if (isFinite(d) && d > 0) resolve(Math.round(d)); else resolve(undefined);
-    };
-    el.onerror = () => { cleanup(); resolve(undefined); };
-  });
-}
+// moved to utils/media
