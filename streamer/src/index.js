@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import http from 'node:http';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { CONFIG } from './config.js';
 
@@ -80,6 +81,19 @@ async function main() {
     console.error('Missing API_BASE_URL or RTMP_TARGET');
     process.exit(1);
   }
+
+  // Tiny HTTP server for Railway web mode
+  const port = process.env.PORT || 3001;
+  const server = http.createServer((req, res) => {
+    if (req.url && (req.url === '/' || req.url.startsWith('/healthz'))) {
+      res.writeHead(200, { 'Content-Type': 'text/plain' });
+      res.end('ok');
+    } else {
+      res.writeHead(200, { 'Content-Type': 'text/plain' });
+      res.end('ralphTV streamer');
+    }
+  });
+  server.listen(port, () => console.log(`Streamer health on :${port}`));
 
   // Loop forever
   // At start of each cycle, compute pointer and decide list

@@ -45,6 +45,7 @@ const s3 = hasS3
   : null;
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
+const SERVICE_TOKEN = process.env.SERVICE_TOKEN || '';
 
 // Health
 app.get('/healthz', (req, res) => res.json({ ok: true }));
@@ -56,10 +57,17 @@ function signToken(payload) {
 
 function authMiddleware(req, res, next) {
   const header = req.headers['authorization'] || '';
-  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
-  if (!token) return res.status(403).json({ message: 'No token provided' });
+  let bearer = header.startsWith('Bearer ') ? header.slice(7) : '';
+  const svcHeader = req.headers['x-service-token'];
+  // Service token accepts either Bearer or X-Service-Token
+  const tryService = (t) => SERVICE_TOKEN && t && String(t) === String(SERVICE_TOKEN);
+  if (tryService(bearer) || tryService(svcHeader)) {
+    req.user = { userId: 'service', email: 'service@ralphtv', role: 'service' };
+    return next();
+  }
+  if (!bearer) return res.status(403).json({ message: 'No token provided' });
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(bearer, JWT_SECRET);
     req.user = decoded;
     next();
   } catch (e) {
