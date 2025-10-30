@@ -502,6 +502,52 @@ app.get('/feed/:channel/:week/:day/now', authMiddleware, async (req, res) => {
   }
 });
 
+// Status endpoints (current pointer + item meta)
+function dayNameFor(date = new Date()) {
+  return ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][date.getDay()];
+}
+
+app.get('/status/:channel/:week/today', authMiddleware, async (req, res) => {
+  const day = dayNameFor();
+  const { channel, week } = req.params;
+  req.params.day = day;
+  return app._router.handle({ ...req, url: `/status/${encodeURIComponent(channel)}/${encodeURIComponent(week)}/${day}` }, res, () => {});
+});
+
+app.get('/status/:channel/:week/:day', authMiddleware, async (req, res) => {
+  const { channel, week, day } = req.params;
+  const at = req.query.at ? new Date(req.query.at) : new Date();
+  try {
+    const client = await pool.connect();
+    try {
+      const sched = await client.query('select id, playback_mode, play_start from schedules where channel=$1 and week=$2 and day=$3', [channel, week, day]);
+      if (!sched.rows.length) return res.json({ day, index: 0, offsetSec: 0 });
+      const row = sched.rows[0];
+      const items = await client.query('select a.id, a.file_name, a.duration_sec, a.vimeo_reference, a.category_id from schedule_items si join assets a on a.id = si.asset_id where si.schedule_id=$1 order by si.position asc', [row.id]);
+      const durations = items.rows.map(r => Number(r.duration_sec || 0));
+      const ptr = computePointer(row.playback_mode || 'loop', row.play_start || '00:00', durations, at);
+      const idx = Math.max(0, Math.min(items.rows.length - 1, ptr.index || 0));
+      const current = items.rows[idx] || null;
+      return res.json({
+        day,
+        index: ptr.index || 0,
+        offsetSec: ptr.offsetSec || 0,
+        ended: !!ptr.ended,
+        item: current ? {
+          assetId: current.id,
+          name: current.file_name,
+          durationSec: current.duration_sec || 0,
+          vimeoReference: current.vimeo_reference,
+          categoryId: current.category_id,
+        } : null,
+      });
+    } finally { client.release(); }
+  } catch (e) {
+    console.error('status error', e);
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // HTTP server + WebSocket
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
