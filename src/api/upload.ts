@@ -52,7 +52,7 @@ export async function putSingle(url: string, file: File, headers?: Record<string
   });
 }
 
-export async function completeUpload(params: { fileId: string; uploadId?: string; parts?: { partNumber: number; etag: string }[]; s3Key?: string; fileName?: string; mimeType?: string; size?: number }) {
+export async function completeUpload(params: { fileId: string; uploadId?: string; parts?: { partNumber: number; etag: string }[]; s3Key?: string; fileName?: string; mimeType?: string; size?: number; durationSec?: number }) {
   if (CONFIG.USE_MOCK_UPLOADS) {
     return { ok: true };
   }

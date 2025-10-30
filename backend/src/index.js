@@ -127,7 +127,7 @@ app.post('/uploads/init', authMiddleware, async (req, res) => {
 });
 
 app.post('/uploads/complete', authMiddleware, async (req, res) => {
-  const { fileId, uploadId, parts, s3Key, fileName, mimeType, size } = req.body || {};
+  const { fileId, uploadId, parts, s3Key, fileName, mimeType, size, durationSec } = req.body || {};
   if (!fileId) return res.status(400).json({ message: 'Missing fileId' });
   if (!hasS3) return res.status(501).json({ message: 'S3 not configured' });
   try {
@@ -144,10 +144,10 @@ app.post('/uploads/complete', authMiddleware, async (req, res) => {
     if (fileName && mimeType && typeof size === 'number' && s3Key) {
       const fileType = mimeType.startsWith('video/') ? 'video' : mimeType.startsWith('audio/') ? 'audio' : 'unknown';
       await pool.query(
-        `insert into assets (id, file_name, mime_type, size, s3_key, file_type)
-         values ($1,$2,$3,$4,$5,$6)
-         on conflict (id) do nothing`,
-        [fileId, fileName, mimeType, size, s3Key, fileType]
+        `insert into assets (id, file_name, mime_type, size, s3_key, file_type, duration_sec)
+         values ($1,$2,$3,$4,$5,$6,$7)
+         on conflict (id) do update set duration_sec = coalesce(excluded.duration_sec, assets.duration_sec)`,
+        [fileId, fileName, mimeType, size, s3Key, fileType, (typeof durationSec === 'number' ? durationSec : null)]
       );
     }
 
@@ -314,6 +314,84 @@ app.post('/assets/:id/tags', authMiddleware, async (req, res) => {
     } finally { client.release(); }
   } catch (e) {
     console.error('tags error', e);
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Categories CRUD
+app.get('/categories', authMiddleware, async (_req, res) => {
+  try {
+    const { rows } = await pool.query('select id, name, color from categories order by name asc');
+    return res.json({ categories: rows });
+  } catch (e) {
+    console.error('categories list error', e);
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
+
+app.post('/categories', authMiddleware, async (req, res) => {
+  const { name, color } = req.body || {};
+  if (!name || !color) return res.status(400).json({ message: 'Missing fields' });
+  try {
+    const { rows } = await pool.query('insert into categories (name, color) values ($1,$2) returning id, name, color', [name, color]);
+    return res.json({ category: rows[0] });
+  } catch (e) {
+    console.error('categories create error', e);
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
+
+app.patch('/categories/:id', authMiddleware, async (req, res) => {
+  const id = req.params.id;
+  const { name, color } = req.body || {};
+  try {
+    const { rows } = await pool.query('update categories set name=coalesce($2,name), color=coalesce($3,color) where id=$1 returning id, name, color', [id, name ?? null, color ?? null]);
+    if (!rows.length) return res.status(404).json({ message: 'Not found' });
+    return res.json({ category: rows[0] });
+  } catch (e) {
+    console.error('categories update error', e);
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
+
+app.delete('/categories/:id', authMiddleware, async (req, res) => {
+  const id = req.params.id;
+  try {
+    await pool.query('delete from categories where id=$1', [id]);
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error('categories delete error', e);
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Asset category, asset list, and duration update
+app.post('/assets/:id/category', authMiddleware, async (req, res) => {
+  const id = req.params.id;
+  const { categoryId } = req.body || {};
+  try {
+    await pool.query('update assets set category_id=$2 where id=$1', [id, categoryId || null]);
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error('asset category error', e);
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
+
+app.get('/assets', authMiddleware, async (_req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      select a.id, a.file_name, a.mime_type, a.size, a.s3_key, a.file_type, a.uploaded_at, a.vimeo_reference, a.duration_sec, a.thumbnail_url, a.category_id,
+             coalesce(array_agg(t.name) filter (where t.name is not null), '{}') as tags
+      from assets a
+      left join asset_tags at on at.asset_id = a.id
+      left join tags t on t.id = at.tag_id
+      group by a.id
+      order by a.uploaded_at desc
+    `);
+    return res.json({ assets: rows });
+  } catch (e) {
+    console.error('assets list error', e);
     return res.status(500).json({ message: 'Server error' });
   }
 });

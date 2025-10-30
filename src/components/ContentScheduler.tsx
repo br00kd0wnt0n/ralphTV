@@ -13,6 +13,7 @@ import LibraryList from './LibraryList';
 import { updateAssetTags } from '../api/assets';
 import CategoryManager from './CategoryManager';
 import DayColumn from './DayColumn';
+import WeekSummary from './WeekSummary';
 
 export default function ContentScheduler() {
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -166,6 +167,7 @@ export default function ContentScheduler() {
   return (
     <div className="content-scheduler container">
       <UploadBar onAssetUploaded={handleAssetUploaded} />
+      <WeekSummary schedule={schedule} assetMap={assetMap} />
 
       <DragDropContext onDragEnd={onDragEnd}>
         <div className="content-layout">

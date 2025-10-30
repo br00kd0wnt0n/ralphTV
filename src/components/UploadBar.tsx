@@ -34,8 +34,9 @@ export default function UploadBar({ onAssetUploaded }: { onAssetUploaded: (asset
           await putSingle(init.url, file, init.headers, (pct) => {
             setItems(prev => prev.map(it => it.id === tempId ? { ...it, progress: pct } : it));
           });
-          await completeUpload({ fileId: init.fileId, s3Key: init.s3Key, fileName: file.name, mimeType: file.type, size: file.size });
           const objectUrl = URL.createObjectURL(file);
+          const duration = await probeDuration(objectUrl, detectType(file.type));
+          await completeUpload({ fileId: init.fileId, s3Key: init.s3Key, fileName: file.name, mimeType: file.type, size: file.size, ...(duration ? { durationSec: duration } : {}) });
           const asset: Asset = {
             id: init.fileId,
             fileId: init.fileId,
@@ -47,12 +48,8 @@ export default function UploadBar({ onAssetUploaded }: { onAssetUploaded: (asset
             s3Key: init.s3Key,
             uploadedAt: new Date().toISOString(),
             tags: [],
+            ...(duration ? { durationSec: duration } : {}),
           };
-          // Probe duration from media metadata (best effort)
-          try {
-            const duration = await probeDuration(objectUrl, asset.type);
-            if (duration) asset.durationSec = duration;
-          } catch {}
           onAssetUploaded(asset);
           setItems(prev => prev.map(it => it.id === tempId ? { ...it, progress: 100, status: 'done' } : it));
         } else {
@@ -72,8 +69,9 @@ export default function UploadBar({ onAssetUploaded }: { onAssetUploaded: (asset
           } else {
             throw new Error('Multipart not properly configured by backend');
           }
-          await completeUpload({ fileId: init.fileId, uploadId: init.uploadId, parts: partsMeta, s3Key: init.s3Key, fileName: file.name, mimeType: file.type, size: file.size });
           const objectUrl = URL.createObjectURL(file);
+          const duration = await probeDuration(objectUrl, detectType(file.type));
+          await completeUpload({ fileId: init.fileId, uploadId: init.uploadId, parts: partsMeta, s3Key: init.s3Key, fileName: file.name, mimeType: file.type, size: file.size, ...(duration ? { durationSec: duration } : {}) });
           const asset: Asset = {
             id: init.fileId,
             fileId: init.fileId,
@@ -85,11 +83,8 @@ export default function UploadBar({ onAssetUploaded }: { onAssetUploaded: (asset
             s3Key: init.s3Key,
             uploadedAt: new Date().toISOString(),
             tags: [],
+            ...(duration ? { durationSec: duration } : {}),
           };
-          try {
-            const duration = await probeDuration(objectUrl, asset.type);
-            if (duration) asset.durationSec = duration;
-          } catch {}
           onAssetUploaded(asset);
           setItems(prev => prev.map(it => it.id === tempId ? { ...it, progress: 100, status: 'done' } : it));
         }

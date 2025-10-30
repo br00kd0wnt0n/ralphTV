@@ -17,3 +17,51 @@ export async function updateAssetTags(params: { assetId: string; tags: string[] 
   if (!res.ok) throw new Error(`updateAssetTags failed: ${res.status}`);
   return res.json().catch(() => ({}));
 }
+
+export async function listAssets() {
+  const res = await fetch(`${CONFIG.API_BASE_URL}/assets`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`listAssets failed: ${res.status}`);
+  return res.json();
+}
+
+export async function setAssetCategory(params: { assetId: string; categoryId?: string }) {
+  const res = await fetch(`${CONFIG.API_BASE_URL}/assets/${encodeURIComponent(params.assetId)}/category`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ categoryId: params.categoryId || null }),
+  });
+  if (!res.ok) throw new Error(`setAssetCategory failed: ${res.status}`);
+  return res.json();
+}
+
+export async function listCategories() {
+  const res = await fetch(`${CONFIG.API_BASE_URL}/categories`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`listCategories failed: ${res.status}`);
+  return res.json();
+}
+
+export async function createCategory(params: { name: string; color: string }) {
+  const res = await fetch(`${CONFIG.API_BASE_URL}/categories`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) throw new Error(`createCategory failed: ${res.status}`);
+  return res.json();
+}
+
+export async function updateCategory(id: string, patch: { name?: string; color?: string }) {
+  const res = await fetch(`${CONFIG.API_BASE_URL}/categories/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) throw new Error(`updateCategory failed: ${res.status}`);
+  return res.json();
+}
+
+export async function deleteCategory(id: string) {
+  const res = await fetch(`${CONFIG.API_BASE_URL}/categories/${encodeURIComponent(id)}`, { method: 'DELETE', headers: authHeaders() });
+  if (!res.ok) throw new Error(`deleteCategory failed: ${res.status}`);
+  return res.json();
+}
