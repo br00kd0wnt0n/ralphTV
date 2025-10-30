@@ -1,7 +1,8 @@
-import type { Asset, Day, ScheduledItem } from './models';
+import type { Asset, Day, ScheduledItem, Category } from './models';
 
 const ASSETS_KEY = 'ralphTV.assets.v1';
 const SCHEDULE_KEY = 'ralphTV.schedule.v1';
+const CATEGORIES_KEY = 'ralphTV.categories.v1';
 
 type PersistedAsset = Omit<Asset, 'url'>;
 
@@ -39,3 +40,18 @@ export function loadSchedule(): Record<Day, ScheduledItem[]> | null {
   }
 }
 
+export function saveCategories(categories: Category[]) {
+  try {
+    localStorage.setItem(CATEGORIES_KEY, JSON.stringify(categories));
+  } catch {}
+}
+
+export function loadCategories(): Category[] {
+  try {
+    const raw = localStorage.getItem(CATEGORIES_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) as Category[];
+  } catch {
+    return [];
+  }
+}

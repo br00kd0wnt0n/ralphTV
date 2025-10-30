@@ -194,7 +194,7 @@ app.get('/schedule/:channel/:week/:day', authMiddleware, async (req, res) => {
     try {
       const schedRow = await getOrCreateScheduleId(client, channel, week, day);
       const { rows: items } = await client.query('select id, asset_id as "assetId", position from schedule_items where schedule_id=$1 order by position asc', [schedRow.id]);
-      return res.json({ version: schedRow.version, items });
+      return res.json({ version: schedRow.version, items, playbackMode: schedRow.playback_mode, playStart: schedRow.play_start });
     } finally { client.release(); }
   } catch (e) {
     console.error('schedule get error', e);
@@ -204,7 +204,7 @@ app.get('/schedule/:channel/:week/:day', authMiddleware, async (req, res) => {
 
 app.put('/schedule/:channel/:week/:day', authMiddleware, async (req, res) => {
   const { channel, week, day } = req.params;
-  const { items } = req.body || {};
+  const { items, playbackMode, playStart } = req.body || {};
   const ifMatch = parseInt(req.headers['if-match'] || '0', 10) || 0;
   if (!Array.isArray(items)) return res.status(400).json({ message: 'Invalid items' });
   try {
@@ -212,7 +212,10 @@ app.put('/schedule/:channel/:week/:day', authMiddleware, async (req, res) => {
     try {
       await client.query('begin');
       const schedRow = await getOrCreateScheduleId(client, channel, week, day);
-      const updated = await client.query('update schedules set version = version + 1, updated_at = now() where id=$1 and version=$2 returning version', [schedRow.id, ifMatch]);
+      const updated = await client.query(
+        'update schedules set version = version + 1, updated_at = now(), playback_mode = coalesce($3, playback_mode), play_start = coalesce($4, play_start) where id=$1 and version=$2 returning version, playback_mode, play_start',
+        [schedRow.id, ifMatch, playbackMode ?? null, playStart ?? null]
+      );
       if (!updated.rowCount) {
         await client.query('rollback');
         const { rows: itemsLatest } = await client.query('select id, asset_id as "assetId", position from schedule_items where schedule_id=$1 order by position asc', [schedRow.id]);
@@ -223,9 +226,9 @@ app.put('/schedule/:channel/:week/:day', authMiddleware, async (req, res) => {
         const it = items[i];
         await client.query('insert into schedule_items (id, schedule_id, position, asset_id) values (gen_random_uuid(), $1, $2, $3)', [schedRow.id, i, it.assetId]);
       }
-      const newVersion = updated.rows[0].version;
+      const row = updated.rows[0];
       await client.query('commit');
-      return res.json({ version: newVersion, items });
+      return res.json({ version: row.version, items, playbackMode: row.playback_mode, playStart: row.play_start });
     } catch (e) {
       await pool.query('rollback');
       throw e;
@@ -238,7 +241,7 @@ app.put('/schedule/:channel/:week/:day', authMiddleware, async (req, res) => {
 
 app.patch('/schedule/:channel/:week/:day', authMiddleware, async (req, res) => {
   const { channel, week, day } = req.params;
-  const { ops } = req.body || {};
+  const { ops, playbackMode, playStart } = req.body || {};
   const ifMatch = parseInt(req.headers['if-match'] || '0', 10) || 0;
   if (!Array.isArray(ops)) return res.status(400).json({ message: 'Invalid ops' });
   try {
@@ -246,7 +249,10 @@ app.patch('/schedule/:channel/:week/:day', authMiddleware, async (req, res) => {
     try {
       await client.query('begin');
       const schedRow = await getOrCreateScheduleId(client, channel, week, day);
-      const updated = await client.query('update schedules set version = version + 1, updated_at = now() where id=$1 and version=$2 returning version', [schedRow.id, ifMatch]);
+      const updated = await client.query(
+        'update schedules set version = version + 1, updated_at = now(), playback_mode = coalesce($3, playback_mode), play_start = coalesce($4, play_start) where id=$1 and version=$2 returning version, playback_mode, play_start',
+        [schedRow.id, ifMatch, playbackMode ?? null, playStart ?? null]
+      );
       if (!updated.rowCount) {
         await client.query('rollback');
         const { rows: itemsLatest } = await client.query('select id, asset_id as "assetId", position from schedule_items where schedule_id=$1 order by position asc', [schedRow.id]);
@@ -269,9 +275,9 @@ app.patch('/schedule/:channel/:week/:day', authMiddleware, async (req, res) => {
         const it = items[i];
         await client.query('insert into schedule_items (id, schedule_id, position, asset_id) values (gen_random_uuid(), $1, $2, $3)', [schedRow.id, i, it.assetId]);
       }
-      const newVersion = updated.rows[0].version;
+      const row = updated.rows[0];
       await client.query('commit');
-      return res.json({ version: newVersion, items });
+      return res.json({ version: row.version, items, playbackMode: row.playback_mode, playStart: row.play_start });
     } catch (e) {
       await pool.query('rollback');
       throw e;

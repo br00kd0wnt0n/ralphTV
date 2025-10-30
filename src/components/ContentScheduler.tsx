@@ -1,16 +1,18 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult } from 'react-beautiful-dnd';
 import '../styles/content-scheduler.css';
-import type { Day, Asset, ScheduledItem } from '../state/models';
+import type { Day, Asset, ScheduledItem, Category } from '../state/models';
 import { DAYS } from '../state/models';
-import { reorder, makeId, isDay } from '../state/schedule';
+import { reorder, makeId, isDay, formatDuration, durationToHeightPx } from '../state/schedule';
 import UploadBar from './UploadBar';
-import { loadAssets, loadSchedule, saveAssets, saveSchedule } from '../state/persistence';
+import { loadAssets, loadSchedule, saveAssets, saveSchedule, loadCategories, saveCategories } from '../state/persistence';
 import { CONFIG } from '../config';
 import { getDaySchedule, putDaySchedule } from '../api/schedule';
 import { RealtimeClient, buildScheduleTopic } from '../realtime/client';
 import LibraryList from './LibraryList';
 import { updateAssetTags } from '../api/assets';
+import CategoryManager from './CategoryManager';
+import DayColumn from './DayColumn';
 
 export default function ContentScheduler() {
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -19,6 +21,10 @@ export default function ContentScheduler() {
   });
   const [versions, setVersions] = useState<Record<Day, number>>({
     Monday: 0, Tuesday: 0, Wednesday: 0, Thursday: 0, Friday: 0, Saturday: 0, Sunday: 0,
+  });
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [playback, setPlayback] = useState<Record<Day, { mode: 'loop'|'playthru'; start?: string }>>({
+    Monday: { mode: 'loop' }, Tuesday: { mode: 'loop' }, Wednesday: { mode: 'loop' }, Thursday: { mode: 'loop' }, Friday: { mode: 'loop' }, Saturday: { mode: 'loop' }, Sunday: { mode: 'loop' },
   });
 
   const assetMap = useMemo(() => new Map(assets.map(a => [a.id, a])), [assets]);
@@ -43,9 +49,13 @@ export default function ContentScheduler() {
           for (const [day, doc] of entries) {
             nextSchedule[day] = doc.items;
             nextVersions[day] = doc.version;
+            if (doc.playbackMode) {
+              (playback as any)[day] = { mode: doc.playbackMode, start: doc.playStart };
+            }
           }
           setSchedule(nextSchedule);
           setVersions(nextVersions);
+          setPlayback({ ...playback });
           return;
         } catch (e) {
           // fall back to local storage
@@ -54,11 +64,14 @@ export default function ContentScheduler() {
       const loadedSchedule = loadSchedule();
       if (loadedSchedule) setSchedule(loadedSchedule);
     })();
+    const loadedCats = loadCategories();
+    if (loadedCats.length) setCategories(loadedCats);
   }, []);
 
   // Persist on changes (small state; immediate save is fine)
   useEffect(() => { saveAssets(assets); }, [assets]);
   useEffect(() => { saveSchedule(schedule); }, [schedule]);
+  useEffect(() => { saveCategories(categories); }, [categories]);
 
   // Realtime subscription (optional)
   useEffect(() => {
@@ -81,13 +94,15 @@ export default function ContentScheduler() {
   const saveDayToBackend = async (day: Day, items: ScheduledItem[]) => {
     if (!CONFIG.USE_BACKEND_SCHEDULE || !CONFIG.API_BASE_URL) return;
     try {
-      const doc = await putDaySchedule({ channel: CONFIG.CHANNEL, week: CONFIG.WEEK, day, items, version: versions[day] || 0 });
+      const meta = playback[day];
+      const doc = await putDaySchedule({ channel: CONFIG.CHANNEL, week: CONFIG.WEEK, day, items, version: versions[day] || 0, playbackMode: meta?.mode, playStart: meta?.start });
       setVersions(prev => ({ ...prev, [day]: doc.version }));
     } catch {
       try {
         const latest = await getDaySchedule({ channel: CONFIG.CHANNEL, week: CONFIG.WEEK, day });
         setSchedule(prev => ({ ...prev, [day]: latest.items }));
         setVersions(prev => ({ ...prev, [day]: latest.version }));
+        if (latest.playbackMode) setPlayback(prev => ({ ...prev, [day]: { mode: latest.playbackMode!, start: latest.playStart } }));
       } catch {}
     }
   };
@@ -165,12 +180,16 @@ export default function ContentScheduler() {
                 <h3>Uploaded Content</h3>
                 <LibraryList
                   assets={assets}
+                  categories={categories}
                   onChangeTags={(assetId, tags) => {
                     setAssets((prev) => prev.map((a) => a.id === assetId ? { ...a, tags } : a));
                     // Best-effort backend persistence when configured
                     if (CONFIG.API_BASE_URL) {
                       updateAssetTags({ assetId, tags }).catch(() => {});
                     }
+                  }}
+                  onChangeCategory={(assetId, categoryId) => {
+                    setAssets(prev => prev.map(a => a.id === assetId ? { ...a, categoryId } : a));
                   }}
                 />
                 {provided.placeholder}
@@ -183,35 +202,30 @@ export default function ContentScheduler() {
             {DAYS.map((day) => (
               <Droppable droppableId={day} key={day}>
                 {(provided) => (
-                  <div
-                    className="schedule-day"
-                    ref={provided.innerRef}
-                    {...provided.droppableProps}
-                  >
-                    <h4>{day}</h4>
-                    {schedule[day].map((item, index) => {
-                      const asset = assetMap.get(item.assetId);
-                      return (
-                        <Draggable key={item.id} draggableId={`sched-${item.id}`} index={index}>
-                          {(provided) => (
-                            <div
-                              ref={provided.innerRef}
-                              {...provided.draggableProps}
-                              {...provided.dragHandleProps}
-                              className={`scheduled-item ${asset?.type ?? 'unknown'}`}
-                              title={asset?.name}
-                            >
-                              {asset?.name ?? 'Missing asset'}
-                            </div>
-                          )}
-                        </Draggable>
-                      );
-                    })}
-                    {provided.placeholder}
-                  </div>
+                  <DayColumn
+                    day={day}
+                    items={schedule[day]}
+                    provided={provided}
+                    assetMap={assetMap}
+                    categories={categories}
+                    playbackMode={playback[day]?.mode || 'loop'}
+                    playStart={playback[day]?.start}
+                    onChangePlayback={(mode, start) => {
+                      setPlayback(prev => ({ ...prev, [day]: { mode, start } }));
+                      // save with current items and new meta
+                      saveDayToBackend(day, schedule[day]);
+                    }}
+                  />
                 )}
               </Droppable>
             ))}
+          </div>
+          {/* Categories panel */}
+          <div className="uploaded-content" style={{ minWidth: 240 }}>
+            <CategoryManager
+              categories={categories}
+              onChange={setCategories}
+            />
           </div>
         </div>
       </DragDropContext>

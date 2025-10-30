@@ -48,6 +48,11 @@ export default function UploadBar({ onAssetUploaded }: { onAssetUploaded: (asset
             uploadedAt: new Date().toISOString(),
             tags: [],
           };
+          // Probe duration from media metadata (best effort)
+          try {
+            const duration = await probeDuration(objectUrl, asset.type);
+            if (duration) asset.durationSec = duration;
+          } catch {}
           onAssetUploaded(asset);
           setItems(prev => prev.map(it => it.id === tempId ? { ...it, progress: 100, status: 'done' } : it));
         } else {
@@ -81,6 +86,10 @@ export default function UploadBar({ onAssetUploaded }: { onAssetUploaded: (asset
             uploadedAt: new Date().toISOString(),
             tags: [],
           };
+          try {
+            const duration = await probeDuration(objectUrl, asset.type);
+            if (duration) asset.durationSec = duration;
+          } catch {}
           onAssetUploaded(asset);
           setItems(prev => prev.map(it => it.id === tempId ? { ...it, progress: 100, status: 'done' } : it));
         }
@@ -114,4 +123,25 @@ export default function UploadBar({ onAssetUploaded }: { onAssetUploaded: (asset
       )}
     </div>
   );
+}
+
+async function probeDuration(url: string, type: Asset['type']): Promise<number | undefined> {
+  return new Promise((resolve) => {
+    let el: HTMLMediaElement;
+    if (type === 'video') el = document.createElement('video');
+    else if (type === 'audio') el = document.createElement('audio');
+    else return resolve(undefined);
+    el.preload = 'metadata';
+    el.src = url;
+    const cleanup = () => {
+      el.removeAttribute('src');
+      try { el.load(); } catch {}
+    };
+    el.onloadedmetadata = () => {
+      const d = el.duration;
+      cleanup();
+      if (isFinite(d) && d > 0) resolve(Math.round(d)); else resolve(undefined);
+    };
+    el.onerror = () => { cleanup(); resolve(undefined); };
+  });
 }

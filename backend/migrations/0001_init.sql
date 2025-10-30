@@ -45,6 +45,8 @@ create table if not exists schedules (
   day text not null,
   timezone text default 'UTC',
   version int not null default 0,
+  playback_mode text not null default 'loop',
+  play_start text,
   updated_by uuid references users(id),
   updated_at timestamptz not null default now(),
   unique (channel, week, day)
@@ -61,4 +63,3 @@ create table if not exists schedule_items (
 );
 
 create index if not exists idx_schedule_items_sched_pos on schedule_items(schedule_id, position);
-

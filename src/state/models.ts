@@ -15,6 +15,14 @@ export type Asset = {
   uploadedAt?: string; // ISO timestamp
   tags?: string[];
   vimeoReference?: string;
+  durationSec?: number;
+  categoryId?: string;
+};
+
+export type Category = {
+  id: string;
+  name: string;
+  color: string; // hex like #4CAF50
 };
 
 export type ScheduledItem = {
