@@ -439,6 +439,7 @@ app.post('/assets/:id/duration', authMiddleware, async (req, res) => {
 // Feed endpoints
 app.get('/feed/:channel/:week/:day/playlist', authMiddleware, async (req, res) => {
   const { channel, week, day } = req.params;
+  const withUrls = String(req.query.withUrls || '').toLowerCase() === '1' || String(req.query.withUrls || '').toLowerCase() === 'true';
   try {
     const client = await pool.connect();
     try {
@@ -446,13 +447,26 @@ app.get('/feed/:channel/:week/:day/playlist', authMiddleware, async (req, res) =
       if (!sched.rows.length) return res.json({ playbackMode: 'loop', playStart: '00:00', items: [] });
       const row = sched.rows[0];
       const items = await client.query(`
-        select si.position, a.id as asset_id, a.vimeo_reference, a.duration_sec
+        select si.position, a.id as asset_id, a.vimeo_reference, a.duration_sec, a.s3_key
         from schedule_items si
         join assets a on a.id = si.asset_id
-        where si.schedule_id=$1 and a.vimeo_reference is not null
+        where si.schedule_id=$1
         order by si.position asc
       `, [row.id]);
-      return res.json({ playbackMode: row.playback_mode || 'loop', playStart: row.play_start || '00:00', items: items.rows.map(r => ({ assetId: r.asset_id, vimeoId: r.vimeo_reference, durationSec: r.duration_sec || 0 })) });
+      const base = items.rows.map(r => ({ assetId: r.asset_id, vimeoId: r.vimeo_reference, durationSec: r.duration_sec || 0, s3Key: r.s3_key }));
+      if (withUrls && hasS3) {
+        const enriched = await Promise.all(base.map(async (it) => {
+          try {
+            const cmd = new GetObjectCommand({ Bucket: process.env.S3_BUCKET_UPLOADS, Key: it.s3Key });
+            const url = await getSignedUrl(s3, cmd, { expiresIn: (parseInt(process.env.PRESIGN_TTL_MINUTES || '10', 10)) * 60 });
+            return { assetId: it.assetId, vimeoId: it.vimeoId, durationSec: it.durationSec, url };
+          } catch {
+            return { assetId: it.assetId, vimeoId: it.vimeoId, durationSec: it.durationSec };
+          }
+        }));
+        return res.json({ playbackMode: row.playback_mode || 'loop', playStart: row.play_start || '00:00', items: enriched });
+      }
+      return res.json({ playbackMode: row.playback_mode || 'loop', playStart: row.play_start || '00:00', items: base.map(({ s3Key, ...rest }) => rest) });
     } finally { client.release(); }
   } catch (e) {
     console.error('feed playlist error', e);

@@ -14,12 +14,12 @@ async function getJSON(url, opts = {}) {
 }
 
 async function playlist() {
-  const u = `${CONFIG.API_BASE_URL}/feed/${encodeURIComponent(CONFIG.CHANNEL)}/${encodeURIComponent(CONFIG.WEEK)}/today/playlist`;
+  const u = `${CONFIG.API_BASE_URL}/feed/${encodeURIComponent(CONFIG.CHANNEL)}/${encodeURIComponent(CONFIG.WEEK)}/today/playlist?withUrls=1`;
   // fall back to exact day if /today not implemented
   const today = new Date();
   const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   const day = days[today.getDay()];
-  const legacy = `${CONFIG.API_BASE_URL}/feed/${encodeURIComponent(CONFIG.CHANNEL)}/${encodeURIComponent(CONFIG.WEEK)}/${day}/playlist`;
+  const legacy = `${CONFIG.API_BASE_URL}/feed/${encodeURIComponent(CONFIG.CHANNEL)}/${encodeURIComponent(CONFIG.WEEK)}/${day}/playlist?withUrls=1`;
   try { return await getJSON(u); } catch { return await getJSON(legacy); }
 }
 
@@ -98,7 +98,7 @@ async function main() {
       // play from pointer to end
       for (let i = idx; i < items.length; i++) {
         const it = items[i];
-        const url = await presignedUrl(it.assetId);
+        const url = it.url || (await presignedUrl(it.assetId));
         await streamOnce(url, offset);
         offset = 0; // only first item uses offset
       }
@@ -112,7 +112,7 @@ async function main() {
       // loop: continue from start
       for (let i = 0; i < idx; i++) {
         const it = items[i];
-        const url = await presignedUrl(it.assetId);
+        const url = it.url || (await presignedUrl(it.assetId));
         await streamOnce(url, 0);
       }
     } catch (e) {
@@ -123,4 +123,3 @@ async function main() {
 }
 
 main();
-
