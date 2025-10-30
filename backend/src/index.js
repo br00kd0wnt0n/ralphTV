@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import http from 'http';
 import express from 'express';
 import cors from 'cors';
 import { Pool } from 'pg';
@@ -14,6 +15,8 @@ import {
   GetObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { WebSocketServer } from 'ws';
+import { computePointer } from './feed.js';
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
@@ -335,7 +338,9 @@ app.post('/categories', authMiddleware, async (req, res) => {
   if (!name || !color) return res.status(400).json({ message: 'Missing fields' });
   try {
     const { rows } = await pool.query('insert into categories (name, color) values ($1,$2) returning id, name, color', [name, color]);
-    return res.json({ category: rows[0] });
+    const category = rows[0];
+    broadcast('categories', { event: 'created', category });
+    return res.json({ category });
   } catch (e) {
     console.error('categories create error', e);
     return res.status(500).json({ message: 'Server error' });
@@ -348,7 +353,9 @@ app.patch('/categories/:id', authMiddleware, async (req, res) => {
   try {
     const { rows } = await pool.query('update categories set name=coalesce($2,name), color=coalesce($3,color) where id=$1 returning id, name, color', [id, name ?? null, color ?? null]);
     if (!rows.length) return res.status(404).json({ message: 'Not found' });
-    return res.json({ category: rows[0] });
+    const category = rows[0];
+    broadcast('categories', { event: 'updated', category });
+    return res.json({ category });
   } catch (e) {
     console.error('categories update error', e);
     return res.status(500).json({ message: 'Server error' });
@@ -359,6 +366,7 @@ app.delete('/categories/:id', authMiddleware, async (req, res) => {
   const id = req.params.id;
   try {
     await pool.query('delete from categories where id=$1', [id]);
+    broadcast('categories', { event: 'deleted', id });
     return res.json({ ok: true });
   } catch (e) {
     console.error('categories delete error', e);
@@ -428,5 +436,80 @@ app.post('/assets/:id/duration', authMiddleware, async (req, res) => {
   }
 });
 
+// Feed endpoints
+app.get('/feed/:channel/:week/:day/playlist', authMiddleware, async (req, res) => {
+  const { channel, week, day } = req.params;
+  try {
+    const client = await pool.connect();
+    try {
+      const sched = await client.query('select id, playback_mode, play_start from schedules where channel=$1 and week=$2 and day=$3', [channel, week, day]);
+      if (!sched.rows.length) return res.json({ playbackMode: 'loop', playStart: '00:00', items: [] });
+      const row = sched.rows[0];
+      const items = await client.query(`
+        select si.position, a.id as asset_id, a.vimeo_reference, a.duration_sec
+        from schedule_items si
+        join assets a on a.id = si.asset_id
+        where si.schedule_id=$1 and a.vimeo_reference is not null
+        order by si.position asc
+      `, [row.id]);
+      return res.json({ playbackMode: row.playback_mode || 'loop', playStart: row.play_start || '00:00', items: items.rows.map(r => ({ assetId: r.asset_id, vimeoId: r.vimeo_reference, durationSec: r.duration_sec || 0 })) });
+    } finally { client.release(); }
+  } catch (e) {
+    console.error('feed playlist error', e);
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
+
+app.get('/feed/:channel/:week/:day/now', authMiddleware, async (req, res) => {
+  const { channel, week, day } = req.params;
+  const at = req.query.at ? new Date(req.query.at) : new Date();
+  try {
+    const client = await pool.connect();
+    try {
+      const sched = await client.query('select id, playback_mode, play_start from schedules where channel=$1 and week=$2 and day=$3', [channel, week, day]);
+      if (!sched.rows.length) return res.json({ index: 0, offsetSec: 0 });
+      const row = sched.rows[0];
+      const items = await client.query('select a.duration_sec from schedule_items si join assets a on a.id = si.asset_id where si.schedule_id=$1 order by si.position asc', [row.id]);
+      const durations = items.rows.map(r => Number(r.duration_sec || 0));
+      const ptr = computePointer(row.playback_mode || 'loop', row.play_start || '00:00', durations, at);
+      return res.json(ptr);
+    } finally { client.release(); }
+  } catch (e) {
+    console.error('feed now error', e);
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// HTTP server + WebSocket
+const server = http.createServer(app);
+const wss = new WebSocketServer({ server });
+
+const subs = new Map(); // topic -> Set(ws)
+wss.on('connection', (ws) => {
+  ws.on('message', (raw) => {
+    try {
+      const msg = JSON.parse(raw.toString());
+      if (msg?.type === 'subscribe' && msg.topic) {
+        if (!subs.has(msg.topic)) subs.set(msg.topic, new Set());
+        subs.get(msg.topic).add(ws);
+      } else if (msg?.type === 'unsubscribe' && msg.topic) {
+        subs.get(msg.topic)?.delete(ws);
+      }
+    } catch {}
+  });
+  ws.on('close', () => {
+    for (const set of subs.values()) set.delete(ws);
+  });
+});
+
+function broadcast(topic, payload) {
+  const set = subs.get(topic);
+  if (!set) return;
+  const data = JSON.stringify({ topic, ...payload });
+  for (const ws of set) {
+    try { ws.send(data); } catch {}
+  }
+}
+
 const port = process.env.PORT || 3000;
-app.listen(port, () => console.log(`ralphTV backend listening on ${port}`));
+server.listen(port, () => console.log(`ralphTV backend listening on ${port}`));

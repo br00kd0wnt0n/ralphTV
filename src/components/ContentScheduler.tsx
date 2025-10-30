@@ -16,6 +16,8 @@ import LibraryPanel from './LibraryPanel';
 import DayColumn from './DayColumn';
 import WeekSummary from './WeekSummary';
 import { useDurationBackfill } from '../hooks/useDurationBackfill';
+import PlaybackControlsRow from './PlaybackControlsRow';
+import PreviewPane from './PreviewPane';
 
 export default function ContentScheduler() {
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -29,6 +31,8 @@ export default function ContentScheduler() {
   const [playback, setPlayback] = useState<Record<Day, { mode: 'loop'|'playthru'; start?: string }>>({
     Monday: { mode: 'loop' }, Tuesday: { mode: 'loop' }, Wednesday: { mode: 'loop' }, Thursday: { mode: 'loop' }, Friday: { mode: 'loop' }, Saturday: { mode: 'loop' }, Sunday: { mode: 'loop' },
   });
+  const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
+  const [compact, setCompact] = useState<boolean>(false);
 
   const assetMap = useMemo(() => new Map(assets.map(a => [a.id, a])), [assets]);
   const [rt, setRt] = useState<RealtimeClient | null>(null);
@@ -133,6 +137,12 @@ export default function ContentScheduler() {
         setVersions((prev) => ({ ...prev, [day]: doc.version }));
       });
     });
+    // categories realtime
+    const unsubCats = client.subscribe('categories', (evt) => {
+      if (evt.event === 'created' && evt.category) setCategories((prev) => prev.concat(evt.category));
+      if (evt.event === 'updated' && evt.category) setCategories((prev) => prev.map(c => c.id === evt.category.id ? evt.category : c));
+      if (evt.event === 'deleted' && evt.id) setCategories((prev) => prev.filter(c => c.id !== evt.id));
+    });
     return () => { unsubs.forEach((u) => u()); client.disconnect(); };
   }, []);
 
@@ -210,7 +220,13 @@ export default function ContentScheduler() {
 
   return (
     <div className="content-scheduler container">
-      <UploadBar onAssetUploaded={handleAssetUploaded} />
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+        <UploadBar onAssetUploaded={handleAssetUploaded} />
+        <div>
+          <label style={{ fontSize: 12, marginRight: 6 }}>Compact view</label>
+          <input type="checkbox" checked={compact} onChange={(e) => setCompact(e.target.checked)} />
+        </div>
+      </div>
       <WeekSummary schedule={schedule} assetMap={assetMap} />
 
       <DragDropContext onDragEnd={onDragEnd}>
@@ -229,20 +245,26 @@ export default function ContentScheduler() {
                     provided={provided}
                     assetMap={assetMap}
                     categories={categories}
-                    playbackMode={playback[day]?.mode || 'loop'}
-                    playStart={playback[day]?.start}
-                    onChangePlayback={(mode, start) => {
-                      setPlayback(prev => ({ ...prev, [day]: { mode, start } }));
-                      // save with current items and new meta
-                      saveDayToBackend(day, schedule[day]);
-                    }}
+                    compact={compact}
+                    onSelect={(id) => setSelectedAssetId(id)}
                   />
                 )}
               </Droppable>
             ))}
           </div>
+          <PlaybackControlsRow
+            values={playback}
+            onChange={(day, mode, start) => {
+              setPlayback(prev => ({ ...prev, [day]: { mode, start } }));
+              saveDayToBackend(day, schedule[day]);
+            }}
+          />
           {/* Categories panel */}
           <CategoriesPanel categories={categories} onChange={setCategories} apiEnabled={!!CONFIG.API_BASE_URL} />
+          {/* Preview panel */}
+          <div className="uploaded-content" style={{ minWidth: 260 }}>
+            <PreviewPane asset={selectedAssetId ? (assetMap.get(selectedAssetId) || null) : null} onClose={() => setSelectedAssetId(null)} />
+          </div>
         </div>
       </DragDropContext>
     </div>

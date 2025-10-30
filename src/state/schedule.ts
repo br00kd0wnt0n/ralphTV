@@ -23,10 +23,10 @@ export function formatDuration(totalSec: number): string {
   return `${s}s`;
 }
 
-export function durationToHeightPx(durationSec?: number): number {
+export function durationToHeightPx(durationSec?: number, compact = false): number {
   // Map 0..1800s to 24..160px using sqrt for diminishing returns
-  const MIN = 24;
-  const MAX = 160;
+  const MIN = compact ? 18 : 24;
+  const MAX = compact ? 120 : 160;
   if (!durationSec || durationSec <= 0) return 40;
   const t = Math.max(0, Math.min(1, durationSec / 1800));
   const eased = Math.sqrt(t);
