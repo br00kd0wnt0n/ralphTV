@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { initUpload, putSingle, completeUpload, uploadMultipart } from '../api/upload';
+import { initUpload, putSingle, completeUpload, uploadMultipart, uploadMultipartWithSigner, getPartUrl } from '../api/upload';
 import type { Asset } from '../state/models';
 
 type UploadItem = {
@@ -34,7 +34,7 @@ export default function UploadBar({ onAssetUploaded }: { onAssetUploaded: (asset
           await putSingle(init.url, file, init.headers, (pct) => {
             setItems(prev => prev.map(it => it.id === tempId ? { ...it, progress: pct } : it));
           });
-          await completeUpload({ fileId: init.fileId });
+          await completeUpload({ fileId: init.fileId, s3Key: init.s3Key, fileName: file.name, mimeType: file.type, size: file.size });
           const objectUrl = URL.createObjectURL(file);
           const asset: Asset = {
             id: init.fileId,
@@ -51,10 +51,23 @@ export default function UploadBar({ onAssetUploaded }: { onAssetUploaded: (asset
           onAssetUploaded(asset);
           setItems(prev => prev.map(it => it.id === tempId ? { ...it, progress: 100, status: 'done' } : it));
         } else {
-          const parts = await uploadMultipart(file, init.partUrls, (pct) => {
-            setItems(prev => prev.map(it => it.id === tempId ? { ...it, progress: pct } : it));
-          });
-          await completeUpload({ fileId: init.fileId, uploadId: init.uploadId, parts });
+          let partsMeta;
+          if (init.partUrls && init.partUrls.length) {
+            partsMeta = await uploadMultipart(file, init.partUrls, (pct) => {
+              setItems(prev => prev.map(it => it.id === tempId ? { ...it, progress: pct } : it));
+            });
+          } else if (init.uploadId && init.s3Key && (init.parts || 0) > 0) {
+            const count = init.parts!;
+            partsMeta = await uploadMultipartWithSigner(
+              file,
+              count,
+              (pn) => getPartUrl(init.uploadId!, init.s3Key!, pn),
+              (pct) => setItems(prev => prev.map(it => it.id === tempId ? { ...it, progress: pct } : it))
+            );
+          } else {
+            throw new Error('Multipart not properly configured by backend');
+          }
+          await completeUpload({ fileId: init.fileId, uploadId: init.uploadId, parts: partsMeta, s3Key: init.s3Key, fileName: file.name, mimeType: file.type, size: file.size });
           const objectUrl = URL.createObjectURL(file);
           const asset: Asset = {
             id: init.fileId,

@@ -10,6 +10,7 @@ import {
   PutObjectCommand,
   CreateMultipartUploadCommand,
   CompleteMultipartUploadCommand,
+  UploadPartCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
@@ -117,8 +118,8 @@ app.post('/uploads/init', authMiddleware, async (req, res) => {
     const created = await s3.send(create);
     const uploadId = created.UploadId;
     const parts = parseInt(process.env.MULTIPART_PARTS || '6', 10);
-    const partUrls = Array.from({ length: parts }, (_, i) => ({ partNumber: i + 1, url: '' }));
-    return res.json({ kind: 'multipart', fileId, s3Key, uploadId, partUrls });
+    // Return part count; client will request per-part URLs via /uploads/part-url
+    return res.json({ kind: 'multipart', fileId, s3Key, uploadId, parts });
   } catch (e) {
     console.error('uploads/init error', e);
     return res.status(500).json({ message: 'Server error' });
@@ -153,6 +154,27 @@ app.post('/uploads/complete', authMiddleware, async (req, res) => {
     return res.json({ ok: true });
   } catch (e) {
     console.error('uploads/complete error', e);
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Per-part presign URL for multipart upload
+app.get('/uploads/part-url', authMiddleware, async (req, res) => {
+  if (!hasS3) return res.status(501).json({ message: 'S3 not configured' });
+  const { uploadId, key, partNumber } = req.query || {};
+  const pn = parseInt(partNumber, 10);
+  if (!uploadId || !key || !pn) return res.status(400).json({ message: 'Missing query params' });
+  try {
+    const cmd = new UploadPartCommand({
+      Bucket: process.env.S3_BUCKET_UPLOADS,
+      Key: key,
+      UploadId: uploadId,
+      PartNumber: pn,
+    });
+    const url = await getSignedUrl(s3, cmd, { expiresIn: (parseInt(process.env.PRESIGN_TTL_MINUTES || '10', 10)) * 60 });
+    return res.json({ partNumber: pn, url });
+  } catch (e) {
+    console.error('part-url error', e);
     return res.status(500).json({ message: 'Server error' });
   }
 });
@@ -292,4 +314,3 @@ app.post('/assets/:id/tags', authMiddleware, async (req, res) => {
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => console.log(`ralphTV backend listening on ${port}`));
-

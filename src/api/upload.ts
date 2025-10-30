@@ -2,7 +2,7 @@ import { CONFIG } from '../config';
 
 export type InitUploadResponse =
   | { kind: 'single'; fileId: string; s3Key: string; url: string; headers?: Record<string,string>; expiresAt: string }
-  | { kind: 'multipart'; fileId: string; s3Key: string; uploadId: string; partUrls: { partNumber: number; url: string }[] };
+  | { kind: 'multipart'; fileId: string; s3Key: string; uploadId: string; partUrls?: { partNumber: number; url: string }[]; parts?: number };
 
 export async function initUpload(params: { fileName: string; mimeType: string; size: number; tags?: string[] }): Promise<InitUploadResponse> {
   if (CONFIG.USE_MOCK_UPLOADS) {
@@ -52,7 +52,7 @@ export async function putSingle(url: string, file: File, headers?: Record<string
   });
 }
 
-export async function completeUpload(params: { fileId: string; uploadId?: string; parts?: { partNumber: number; etag: string }[] }) {
+export async function completeUpload(params: { fileId: string; uploadId?: string; parts?: { partNumber: number; etag: string }[]; s3Key?: string; fileName?: string; mimeType?: string; size?: number }) {
   if (CONFIG.USE_MOCK_UPLOADS) {
     return { ok: true };
   }
@@ -116,6 +116,45 @@ export async function uploadMultipart(file: File, partUrls: { partNumber: number
       const gross = (start + inc) - start; // bytes within this part
       const tentativeUploaded = Math.min(uploaded + (gross - 0), total);
       const pct = Math.max(0, Math.min(100, Math.round(((uploaded + gross) / total) * 100)));
+      onProgress?.(pct);
+    });
+    uploaded += blob.size;
+    parts.push({ partNumber, etag });
+    onProgress?.(Math.round((uploaded / total) * 100));
+  }
+  return parts;
+}
+
+export async function getPartUrl(uploadId: string, s3Key: string, partNumber: number): Promise<string> {
+  if (CONFIG.USE_MOCK_UPLOADS) return `https://example.invalid/mock-part/${partNumber}`;
+  const token = (typeof localStorage !== 'undefined' && localStorage.getItem('token')) || CONFIG.API_AUTH_TOKEN;
+  const url = new URL(`${CONFIG.API_BASE_URL}/uploads/part-url`);
+  url.searchParams.set('uploadId', uploadId);
+  url.searchParams.set('key', s3Key);
+  url.searchParams.set('partNumber', String(partNumber));
+  const res = await fetch(url.toString(), { headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) } });
+  if (!res.ok) throw new Error(`part-url failed: ${res.status}`);
+  const data = await res.json();
+  return data.url as string;
+}
+
+export async function uploadMultipartWithSigner(
+  file: File,
+  partsCount: number,
+  signer: (partNumber: number) => Promise<string>,
+  onProgress?: (pct: number) => void
+): Promise<PartMeta[]> {
+  const total = file.size;
+  let uploaded = 0;
+  const parts: PartMeta[] = [];
+  for (let i = 0; i < partsCount; i++) {
+    const partNumber = i + 1;
+    const start = Math.floor((i / partsCount) * total);
+    const end = i === partsCount - 1 ? total : Math.floor(((i + 1) / partsCount) * total);
+    const blob = file.slice(start, end);
+    const url = await signer(partNumber);
+    const etag = await putPart(url, blob, (inc) => {
+      const pct = Math.max(0, Math.min(100, Math.round(((uploaded + inc) / total) * 100)));
       onProgress?.(pct);
     });
     uploaded += blob.size;
