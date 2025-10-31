@@ -1,29 +1,161 @@
-import React from 'react';
+import React, { useRef, useState, useMemo } from 'react';
 import { Droppable } from 'react-beautiful-dnd';
 import type { Asset, Category } from '../state/models';
 import LibraryList from './LibraryList';
 import { updateAssetTags, setAssetCategory } from '../api/assets';
 import { CONFIG } from '../config';
+import { initUpload, putSingle, completeUpload, uploadMultipart, uploadMultipartWithSigner, getPartUrl } from '../api/upload';
+import { probeDuration } from '../utils/media';
+
+type UploadItem = {
+  id: string;
+  name: string;
+  progress: number;
+  status: 'idle'|'uploading'|'done'|'error';
+  error?: string;
+};
+
+function detectType(mime: string): Asset['type'] {
+  if (mime.startsWith('video/')) return 'video';
+  if (mime.startsWith('audio/')) return 'audio';
+  return 'unknown';
+}
 
 export default function LibraryPanel({
   assets,
   categories,
   setAssets,
+  onAssetUploaded,
 }: {
   assets: Asset[];
   categories: Category[];
   setAssets: (updater: (prev: Asset[]) => Asset[]) => void;
+  onAssetUploaded: (asset: Asset) => void;
 }) {
   const apiEnabled = !!CONFIG.API_BASE_URL;
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploadItems, setUploadItems] = useState<UploadItem[]>([]);
+
+  const handleFiles: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    e.currentTarget.value = '';
+
+    for (const file of files) {
+      const tempId = crypto.randomUUID?.() ?? `u_${Date.now()}_${Math.random()}`;
+      setUploadItems(prev => [...prev, { id: tempId, name: file.name, progress: 0, status: 'idle' }]);
+      try {
+        const init = await initUpload({ fileName: file.name, mimeType: file.type, size: file.size });
+        setUploadItems(prev => prev.map(it => it.id === tempId ? { ...it, status: 'uploading' } : it));
+        if (init.kind === 'single') {
+          await putSingle(init.url, file, init.headers, (pct) => {
+            setUploadItems(prev => prev.map(it => it.id === tempId ? { ...it, progress: pct } : it));
+          });
+          const objectUrl = URL.createObjectURL(file);
+          const duration = await probeDuration(objectUrl, detectType(file.type));
+          await completeUpload({ fileId: init.fileId, s3Key: init.s3Key, fileName: file.name, mimeType: file.type, size: file.size, ...(duration ? { durationSec: duration } : {}) });
+          const asset: Asset = {
+            id: init.fileId,
+            fileId: init.fileId,
+            name: file.name,
+            type: detectType(file.type),
+            url: objectUrl,
+            mimeType: file.type,
+            size: file.size,
+            s3Key: init.s3Key,
+            uploadedAt: new Date().toISOString(),
+            tags: [],
+            ...(duration ? { durationSec: duration } : {}),
+          };
+          onAssetUploaded(asset);
+          setUploadItems(prev => prev.map(it => it.id === tempId ? { ...it, progress: 100, status: 'done' } : it));
+        } else {
+          let partsMeta;
+          if (init.partUrls && init.partUrls.length) {
+            partsMeta = await uploadMultipart(file, init.partUrls, (pct) => {
+              setUploadItems(prev => prev.map(it => it.id === tempId ? { ...it, progress: pct } : it));
+            });
+          } else if (init.uploadId && init.s3Key && (init.parts || 0) > 0) {
+            const count = init.parts!;
+            partsMeta = await uploadMultipartWithSigner(
+              file,
+              count,
+              (pn) => getPartUrl(init.uploadId!, init.s3Key!, pn),
+              (pct) => setUploadItems(prev => prev.map(it => it.id === tempId ? { ...it, progress: pct } : it))
+            );
+          } else {
+            throw new Error('Multipart not properly configured by backend');
+          }
+          const objectUrl = URL.createObjectURL(file);
+          const duration = await probeDuration(objectUrl, detectType(file.type));
+          await completeUpload({ fileId: init.fileId, uploadId: init.uploadId, parts: partsMeta, s3Key: init.s3Key, fileName: file.name, mimeType: file.type, size: file.size, ...(duration ? { durationSec: duration } : {}) });
+          const asset: Asset = {
+            id: init.fileId,
+            fileId: init.fileId,
+            name: file.name,
+            type: detectType(file.type),
+            url: objectUrl,
+            mimeType: file.type,
+            size: file.size,
+            s3Key: init.s3Key,
+            uploadedAt: new Date().toISOString(),
+            tags: [],
+            ...(duration ? { durationSec: duration } : {}),
+          };
+          onAssetUploaded(asset);
+          setUploadItems(prev => prev.map(it => it.id === tempId ? { ...it, progress: 100, status: 'done' } : it));
+        }
+      } catch (err: any) {
+        setUploadItems(prev => prev.map(it => it.id === tempId ? { ...it, status: 'error', error: String(err?.message || err) } : it));
+      }
+    }
+  };
+
+  const activeUploads = useMemo(() => uploadItems.filter(i => i.status !== 'done'), [uploadItems]);
+
   return (
     <Droppable droppableId="library">
       {(provided) => (
         <div className="uploaded-content" ref={provided.innerRef} {...provided.droppableProps}>
-          <h3>Uploaded Content</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3>Uploaded Content</h3>
+            <button
+              className="win95-button"
+              onClick={() => fileInputRef.current?.click()}
+              style={{ fontSize: 10, padding: '2px 8px', margin: '2px 4px' }}
+            >
+              Upload Files
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="video/*,audio/*"
+              multiple
+              onChange={handleFiles}
+              style={{ display: 'none' }}
+            />
+          </div>
           <div>
-            {assets.length === 0 && (
+            {activeUploads.length > 0 && (
+              <div style={{ padding: 8, background: 'var(--bg-secondary)', margin: 8, borderRadius: 4 }}>
+                {activeUploads.map(it => (
+                  <div key={it.id} style={{ fontSize: 10, marginBottom: 6, color: 'white' }}>
+                    <div>{it.name} — {it.status} {it.status === 'uploading' ? `${it.progress}%` : ''}</div>
+                    {it.status === 'uploading' && (
+                      <div style={{ background: '#333', height: 4, borderRadius: 2, marginTop: 2 }}>
+                        <div style={{ width: `${it.progress}%`, background: 'var(--brand-teal)', height: 4, borderRadius: 2 }} />
+                      </div>
+                    )}
+                    {it.status === 'error' && (
+                      <div style={{ color: 'var(--brand-pink)' }}>{it.error}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            {assets.length === 0 && activeUploads.length === 0 && (
               <div style={{ padding: '12px 0', fontSize: 10, color: 'black', textAlign: 'center', fontStyle: 'italic' }}>
-                No assets yet. Upload files above to get started!
+                No assets yet. Click Upload Files to get started!
               </div>
             )}
             <LibraryList

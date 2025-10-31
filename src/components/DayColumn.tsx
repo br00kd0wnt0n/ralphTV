@@ -9,7 +9,6 @@ export default function DayColumn({
   provided,
   assetMap,
   categories,
-  compact,
   onSelect,
   playbackMode,
   playStart,
@@ -20,7 +19,6 @@ export default function DayColumn({
   provided: DroppableProvided;
   assetMap: Map<string, Asset>;
   categories: Category[];
-  compact?: boolean;
   onSelect?: (assetId: string) => void;
   playbackMode?: 'loop' | 'playthru';
   playStart?: string;
@@ -55,7 +53,7 @@ export default function DayColumn({
                 className={`scheduled-item ${asset?.type ?? 'unknown'}`}
                 title={asset?.name}
                 style={{
-                  height: durationToHeightPx(asset?.durationSec, !!compact),
+                  height: durationToHeightPx(asset?.durationSec, false),
                   ...(color ? { borderLeftColor: color, borderLeftWidth: '6px' } : {})
                 }}
                 onClick={() => asset && onSelect?.(asset.id)}

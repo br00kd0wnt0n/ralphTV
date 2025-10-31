@@ -84,6 +84,8 @@ body {
   cursor: pointer;
   outline: none;
   min-width: 75px;
+  color: #2a2a2a;
+  font-weight: bold;
 }
 
 .win95-button:active {

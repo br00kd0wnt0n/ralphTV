@@ -4,7 +4,6 @@ import '../styles/content-scheduler.css';
 import type { Day, Asset, ScheduledItem, Category } from '../state/models';
 import { DAYS } from '../state/models';
 import { reorder, makeId, isDay, formatDuration, durationToHeightPx } from '../state/schedule';
-import UploadBar from './UploadBar';
 import { loadAssets, loadSchedule, saveAssets, saveSchedule, loadCategories, saveCategories } from '../state/persistence';
 import { CONFIG } from '../config';
 import { getDaySchedule, putDaySchedule } from '../api/schedule';
@@ -33,7 +32,6 @@ export default function ContentScheduler() {
     Monday: { mode: 'loop' }, Tuesday: { mode: 'loop' }, Wednesday: { mode: 'loop' }, Thursday: { mode: 'loop' }, Friday: { mode: 'loop' }, Saturday: { mode: 'loop' }, Sunday: { mode: 'loop' },
   });
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
-  const [compact, setCompact] = useState<boolean>(false);
 
   const assetMap = useMemo(() => new Map(assets.map(a => [a.id, a])), [assets]);
   const [rt, setRt] = useState<RealtimeClient | null>(null);
@@ -221,29 +219,24 @@ export default function ContentScheduler() {
 
   return (
     <div className="content-scheduler container">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-        <UploadBar onAssetUploaded={handleAssetUploaded} />
-        <div>
-          <label style={{ fontSize: 12, marginRight: 6 }}>Compact view</label>
-          <input type="checkbox" checked={compact} onChange={(e) => setCompact(e.target.checked)} />
-        </div>
-      </div>
+      {/* Status Boxes under header */}
       <div className="status-boxes-container">
         <WeekSummary schedule={schedule} assetMap={assetMap} />
         <StreamerControls />
         <OnAirTile assetMap={assetMap} />
       </div>
 
+      {/* Library - full width outside grid */}
+      <LibraryPanel
+        assets={assets}
+        categories={categories}
+        setAssets={setAssets}
+        onAssetUploaded={handleAssetUploaded}
+      />
+
       <DragDropContext onDragEnd={onDragEnd}>
-        <div className="content-layout">
-          {/* Library */}
-          <LibraryPanel assets={assets} categories={categories} setAssets={setAssets} />
-
-          {/* Categories panel */}
-          <CategoriesPanel categories={categories} onChange={setCategories} apiEnabled={!!CONFIG.API_BASE_URL} />
-
-          {/* Schedule Grid */}
-          <div className="schedule-grid">
+        {/* Schedule Grid - full width outside grid */}
+        <div className="schedule-grid">
             {DAYS.map((day) => (
               <Droppable droppableId={day} key={day}>
                 {(provided) => (
@@ -253,7 +246,6 @@ export default function ContentScheduler() {
                     provided={provided}
                     assetMap={assetMap}
                     categories={categories}
-                    compact={compact}
                     onSelect={(id) => setSelectedAssetId(id)}
                     playbackMode={playback[day]?.mode}
                     playStart={playback[day]?.start}
@@ -265,8 +257,10 @@ export default function ContentScheduler() {
                 )}
               </Droppable>
             ))}
-          </div>
         </div>
+
+        {/* Categories panel - full width below schedule */}
+        <CategoriesPanel categories={categories} onChange={setCategories} apiEnabled={!!CONFIG.API_BASE_URL} />
       </DragDropContext>
 
       {/* Preview Modal */}
