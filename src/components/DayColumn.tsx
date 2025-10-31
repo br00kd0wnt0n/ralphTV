@@ -37,7 +37,8 @@ export default function DayColumn({
       </h4>
       {items.map((item, index) => {
         const asset = assetMap.get(item.assetId);
-        const color = categories.find(c => c.id === asset?.categoryId)?.color;
+        const category = categories.find(c => c.id === asset?.categoryId);
+        const color = category?.color;
         return (
           <Draggable key={item.id} draggableId={`sched-${item.id}`} index={index}>
             {(provided) => (
@@ -47,12 +48,31 @@ export default function DayColumn({
                 {...provided.dragHandleProps}
                 className={`scheduled-item ${asset?.type ?? 'unknown'}`}
                 title={asset?.name}
-                style={{ height: durationToHeightPx(asset?.durationSec, !!compact), borderLeftColor: color || undefined }}
+                style={{
+                  height: durationToHeightPx(asset?.durationSec, !!compact),
+                  ...(color ? { borderLeftColor: color, borderLeftWidth: '6px' } : {})
+                }}
                 onClick={() => asset && onSelect?.(asset.id)}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span>{asset?.name ?? 'Missing asset'}</span>
-                  <span style={{ fontSize: 12, opacity: 0.7 }}>{asset?.durationSec ? formatDuration(asset.durationSec) : ''}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    {category && (
+                      <span
+                        style={{
+                          width: 10,
+                          height: 10,
+                          borderRadius: '50%',
+                          background: category.color,
+                          border: '1px solid rgba(0,0,0,0.3)',
+                          display: 'inline-block',
+                          flexShrink: 0
+                        }}
+                        title={category.name}
+                      />
+                    )}
+                    <span style={{ fontSize: 10, opacity: 0.7 }}>{asset?.durationSec ? formatDuration(asset.durationSec) : ''}</span>
+                  </div>
                 </div>
               </div>
             )}
