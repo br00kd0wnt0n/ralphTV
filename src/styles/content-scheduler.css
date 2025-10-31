@@ -60,7 +60,8 @@
   border-bottom: 2px solid var(--border-dark);
   padding: 0;
   width: 100%;
-  max-width: 280px;
+  max-width: 100%;
+  margin-bottom: 12px;
 }
 
 .uploaded-content h3,
@@ -74,7 +75,20 @@
   text-shadow: 1px 1px 0 rgba(0,0,0,0.3);
 }
 
-.uploaded-content > div,
+/* Content area inside panels */
+.uploaded-content > div {
+  padding: 8px;
+}
+
+/* Make library items wrap horizontally */
+.uploaded-content > div:last-of-type {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-start;
+  align-content: flex-start;
+}
+
 .categories-panel > div {
   padding: 8px;
 }
@@ -110,7 +124,7 @@
 .content-item,
 .scheduled-item {
   background: var(--win95-face);
-  margin: 4px 0;
+  margin: 0;
   padding: 6px;
   border-top: 2px solid var(--border-light);
   border-left: 2px solid var(--border-light);
@@ -119,11 +133,23 @@
   cursor: move;
   font-size: 10px;
   font-weight: bold;
+  user-select: none;
+  color: black;
+}
+
+/* Library items - set width for wrapping layout */
+.content-item {
+  min-width: 200px;
+  max-width: 280px;
+  flex: 0 1 auto;
+}
+
+/* Scheduled items in day columns */
+.scheduled-item {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  user-select: none;
-  color: black;
+  margin: 4px 0;
 }
 
 .content-item:active,
