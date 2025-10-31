@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { Asset, Category } from '../state/models';
 import Player from '@vimeo/player';
 import { getAssetReadUrl } from '../api/assets';
@@ -21,6 +21,44 @@ export default function PreviewPane({
   categories?: Category[];
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const modalRef = useRef<HTMLDivElement | null>(null);
+  const [position, setPosition] = useState({ x: window.innerWidth - 384, y: window.innerHeight - 600 });
+  const [dragging, setDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('.preview-header')) {
+      setDragging(true);
+      setDragStart({
+        x: e.clientX - position.x,
+        y: e.clientY - position.y
+      });
+    }
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (dragging) {
+        setPosition({
+          x: Math.max(0, Math.min(window.innerWidth - 360, e.clientX - dragStart.x)),
+          y: Math.max(0, Math.min(window.innerHeight - 200, e.clientY - dragStart.y))
+        });
+      }
+    };
+
+    const handleMouseUp = () => {
+      setDragging(false);
+    };
+
+    if (dragging) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+      };
+    }
+  }, [dragging, dragStart]);
 
   useEffect(() => {
     if (!asset || !containerRef.current) return;
@@ -51,8 +89,17 @@ export default function PreviewPane({
   const category = categories?.find(c => c.id === asset?.categoryId);
 
   return (
-    <div className="asset-preview-modal">
-      <div className="preview-header">
+    <div
+      ref={modalRef}
+      className="asset-preview-modal"
+      style={{
+        left: `${position.x}px`,
+        top: `${position.y}px`,
+        cursor: dragging ? 'grabbing' : 'default'
+      }}
+      onMouseDown={handleMouseDown}
+    >
+      <div className="preview-header" style={{ cursor: 'grab' }}>
         <h4>Asset Preview</h4>
         {asset && <button className="win95-button" onClick={onClose} style={{ padding: '2px 8px', minWidth: 50 }}>Close</button>}
       </div>
