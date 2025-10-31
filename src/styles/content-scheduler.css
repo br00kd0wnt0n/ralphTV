@@ -2,7 +2,7 @@
 
 .content-scheduler {
   margin: 0 auto;
-  padding: 8px;
+  padding: 6px;
   max-width: 100%;
 }
 
@@ -10,7 +10,7 @@
   display: grid;
   grid-template-columns: 1fr;
   grid-template-rows: auto auto auto;
-  gap: 12px;
+  gap: 8px;
   align-items: start;
 }
 
@@ -32,15 +32,8 @@
   grid-column: 1;
   grid-row: 2;
   display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  padding: 4px;
-  background: var(--bg-secondary);
-  border-top: 2px solid var(--border-dark);
-  border-left: 2px solid var(--border-dark);
-  border-right: 2px solid var(--border-light);
-  border-bottom: 2px solid var(--border-light);
+  gap: 6px;
+  padding: 0;
 }
 
 /* Bottom row: Categories panel at bottom */
@@ -59,7 +52,7 @@
   border-right: 2px solid var(--border-dark);
   border-bottom: 2px solid var(--border-dark);
   padding: 0;
-  margin-bottom: 12px;
+  margin-bottom: 0;
 }
 
 /* Library panel - full width */
@@ -106,7 +99,7 @@
   border-left: 2px solid var(--border-light);
   border-right: 2px solid var(--border-dark);
   border-bottom: 2px solid var(--border-dark);
-  padding: 4px;
+  padding: 6px;
   flex: 1;
   min-width: 140px;
   min-height: 400px;
@@ -154,7 +147,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  margin: 4px 0;
+  margin: 3px 0;
   position: relative;
 }
 
@@ -507,19 +500,19 @@
 }
 
 .content-scheduler.compact .schedule-day {
-  min-width: 140px;
-  max-width: 160px;
+  flex: 1;
+  min-width: 120px;
 }
 
 /* Responsive layout */
 @media (max-width: 1600px) {
   .content-layout {
-    grid-template-columns: 260px 1fr 260px;
+    grid-template-columns: 1fr;
   }
 
   .schedule-day {
-    min-width: 140px;
-    max-width: 160px;
+    flex: 1;
+    min-width: 120px;
   }
 }
 
