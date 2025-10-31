@@ -79,6 +79,8 @@ let CHILD = null;
 let CURRENT = null; // { assetId, index, startedAt, url }
 let SESSION_STARTED_AT = null;
 const NORMALIZE = (process.env.STREAMER_NORMALIZE === 'true');
+const DISABLE_BATCH = (process.env.STREAMER_DISABLE_BATCH === 'true');
+const MAX_RETRIES = parseInt(process.env.STREAMER_MAX_RETRIES || '1', 10) || 1;
 
 async function streamOnce(url, offsetSec) {
   // Download remote to a local temp file for stable decoding
@@ -93,6 +95,15 @@ async function streamOnce(url, offsetSec) {
       localPath = url;
     }
   }
+  // Optional normalization for first item
+  let normalizedPath = null;
+  if (NORMALIZE && downloaded) {
+    try {
+      normalizedPath = await normalizeToTemp(localPath, 'single_norm');
+    } catch (e) {
+      console.error('normalize(first) failed, using original', e);
+    }
+  }
 
   return new Promise((resolve, reject) => {
     // Use -ss before -i for fast seek when local file
@@ -104,7 +115,7 @@ async function streamOnce(url, offsetSec) {
       '-loglevel', 'info',
       '-re',
       ...(offsetSec > 0 ? ['-ss', String(Math.floor(offsetSec))] : []),
-      '-i', localPath,
+      '-i', (normalizedPath || localPath),
       '-c:v', 'libx264', '-preset', CONFIG.PRESET, '-profile:v', 'high', '-pix_fmt', 'yuv420p',
       '-b:v', CONFIG.VIDEO_BITRATE, '-maxrate', CONFIG.VIDEO_BITRATE, '-bufsize', '10000k',
       '-g', String(CONFIG.GOP), '-r', String(CONFIG.FPS),
@@ -122,6 +133,7 @@ async function streamOnce(url, offsetSec) {
       CHILD = null;
       if (downloaded) { try { await fs.unlink(localPath); } catch {}
       }
+      if (normalizedPath) { try { await fs.unlink(normalizedPath); } catch {} }
       if (wasKilled) return resolve();
       if (code === 0) resolve(); else {
         console.error('ffmpeg exited with code', code);
@@ -396,7 +408,12 @@ async function main() {
         const first = items[idx];
         const firstUrl = first.url || (await presignedUrl(first.assetId));
         CURRENT = { assetId: first.assetId, index: idx, startedAt: Date.now(), url: firstUrl };
-        await streamOnce(firstUrl, offset);
+        // Retry logic for first item
+        let attempts = 0;
+        while (attempts <= MAX_RETRIES) {
+          try { await streamOnce(firstUrl, offset); break; }
+          catch (e) { attempts++; console.error(`first item failed (attempt ${attempts})`, e); if (attempts > MAX_RETRIES) throw e; }
+        }
       }
       if (idx + 1 < items.length && RUNNING) {
         const urls = [];
@@ -405,7 +422,33 @@ async function main() {
           urls.push(it.url || (await presignedUrl(it.assetId)));
         }
         CURRENT = null; // batch doesn't track per-item
-        if (urls.length) await streamBatch(urls);
+        if (urls.length && !DISABLE_BATCH) {
+          try {
+            await streamBatch(urls);
+          } catch (e) {
+            console.error('batch failed; falling back to sequential items', e);
+            // Fallback: sequential
+            for (let j = 0; j < urls.length; j++) {
+              if (!RUNNING) break;
+              const u = urls[j];
+              let attempts = 0;
+              while (attempts <= MAX_RETRIES) {
+                try { await streamOnce(u, 0); break; }
+                catch (err) { attempts++; console.error(`item ${idx+1+j} failed (attempt ${attempts})`, err); if (attempts > MAX_RETRIES) break; }
+              }
+            }
+          }
+        } else if (urls.length && DISABLE_BATCH) {
+          // Always sequential if batch disabled
+          for (let j = 0; j < urls.length; j++) {
+            if (!RUNNING) break;
+            let attempts = 0;
+            while (attempts <= MAX_RETRIES) {
+              try { await streamOnce(urls[j], 0); break; }
+              catch (err) { attempts++; console.error(`item ${idx+1+j} failed (attempt ${attempts})`, err); if (attempts > MAX_RETRIES) break; }
+            }
+          }
+        }
       }
 
       if (mode === 'playthru') {
@@ -423,7 +466,30 @@ async function main() {
           urls.push(it.url || (await presignedUrl(it.assetId)));
         }
         CURRENT = null;
-        if (urls.length) await streamBatch(urls);
+        if (urls.length && !DISABLE_BATCH) {
+          try {
+            await streamBatch(urls);
+          } catch (e) {
+            console.error('batch(loop) failed; falling back to sequential', e);
+            for (let j = 0; j < urls.length; j++) {
+              if (!RUNNING) break;
+              let attempts = 0;
+              while (attempts <= MAX_RETRIES) {
+                try { await streamOnce(urls[j], 0); break; }
+                catch (err) { attempts++; console.error(`loop item ${j} failed (attempt ${attempts})`, err); if (attempts > MAX_RETRIES) break; }
+              }
+            }
+          }
+        } else if (urls.length && DISABLE_BATCH) {
+          for (let j = 0; j < urls.length; j++) {
+            if (!RUNNING) break;
+            let attempts = 0;
+            while (attempts <= MAX_RETRIES) {
+              try { await streamOnce(urls[j], 0); break; }
+              catch (err) { attempts++; console.error(`loop item ${j} failed (attempt ${attempts})`, err); if (attempts > MAX_RETRIES) break; }
+            }
+          }
+        }
       }
       CURRENT = null;
     } catch (e) {
