@@ -13,7 +13,7 @@ export default function CategoriesPanel({
   apiEnabled: boolean;
 }) {
   return (
-    <div className="uploaded-content" style={{ minWidth: 240 }}>
+    <div className="categories-panel">
       <CategoryManager
         categories={categories}
         onCreate={async (name, color) => {
