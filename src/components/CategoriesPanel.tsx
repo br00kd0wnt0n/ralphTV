@@ -17,14 +17,24 @@ export default function CategoriesPanel({
       <CategoryManager
         categories={categories}
         onCreate={async (name, color) => {
+          if (!apiEnabled) {
+            onChange([...categories, { id: 'temp-' + Date.now(), name, color }]);
+            return;
+          }
+
           onChange([...categories, { id: 'pending', name, color } as any]);
-          if (apiEnabled) {
-            try {
-              const res = await createCategory({ name, color });
-              if (res?.category) onChange(categories.concat(res.category));
-            } finally {
-              onChange((categories || []).filter(c => c.id !== 'pending'));
+          try {
+            const res = await createCategory({ name, color });
+            if (res?.category) {
+              // Replace pending with real category
+              onChange([...categories, res.category]);
+            } else {
+              // Remove pending if no category returned
+              onChange(categories);
             }
+          } catch (e) {
+            // On error, revert to original (removes pending)
+            onChange(categories);
           }
         }}
         onUpdate={async (id, patch) => {
