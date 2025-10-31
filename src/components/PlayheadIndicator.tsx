@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import { getStatusToday } from '../api/status';
 import { CONFIG } from '../config';
 import type { Day, ScheduledItem, Asset } from '../state/models';
@@ -18,6 +18,8 @@ export default function PlayheadIndicator({
   assetMap: Map<string, Asset>;
 }) {
   const [playhead, setPlayhead] = useState<PlayheadData | null>(null);
+  const [leftPosition, setLeftPosition] = useState<number | null>(null);
+  const [columnWidth, setColumnWidth] = useState(160);
 
   useEffect(() => {
     let cancelled = false;
@@ -60,7 +62,28 @@ export default function PlayheadIndicator({
     };
   }, [schedule]);
 
-  if (!playhead) return null;
+  // Calculate horizontal position dynamically from DOM
+  useEffect(() => {
+    if (!playhead) return;
+
+    const scheduleGrid = document.querySelector('.schedule-grid');
+    if (!scheduleGrid) return;
+
+    const dayColumns = scheduleGrid.querySelectorAll('.schedule-day');
+    const dayIndex = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].indexOf(playhead.day);
+    const dayColumn = dayColumns[dayIndex] as HTMLElement;
+
+    if (dayColumn) {
+      const gridRect = scheduleGrid.getBoundingClientRect();
+      const columnRect = dayColumn.getBoundingClientRect();
+      const left = columnRect.left - gridRect.left;
+      const width = columnRect.width - 8;
+      setLeftPosition(left + 4);
+      setColumnWidth(width);
+    }
+  }, [playhead?.day]);
+
+  if (!playhead || leftPosition === null) return null;
 
   // Calculate the vertical position of the playhead
   const items = schedule[playhead.day];
@@ -84,31 +107,6 @@ export default function PlayheadIndicator({
   // Add header height (h4 + margin)
   const headerHeight = 32;
   const topPosition = headerHeight + accumulatedHeight;
-
-  // Calculate horizontal position based on actual schedule-grid layout
-  const [leftPosition, setLeftPosition] = React.useState<number | null>(null);
-  const [columnWidth, setColumnWidth] = React.useState(160);
-
-  React.useEffect(() => {
-    // Find the actual day column element in the DOM
-    const scheduleGrid = document.querySelector('.schedule-grid');
-    if (!scheduleGrid) return;
-
-    const dayColumns = scheduleGrid.querySelectorAll('.schedule-day');
-    const dayIndex = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].indexOf(playhead.day);
-    const dayColumn = dayColumns[dayIndex] as HTMLElement;
-
-    if (dayColumn) {
-      const gridRect = scheduleGrid.getBoundingClientRect();
-      const columnRect = dayColumn.getBoundingClientRect();
-      const left = columnRect.left - gridRect.left;
-      const width = columnRect.width - 8; // Subtract padding
-      setLeftPosition(left + 4); // Add padding offset
-      setColumnWidth(width);
-    }
-  }, [playhead.day]);
-
-  if (leftPosition === null) return null;
 
   return (
     <div
