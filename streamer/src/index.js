@@ -43,13 +43,17 @@ async function presignedUrl(assetId) {
 
 function ffmpegArgs(inputUrl, offsetSec = 0) {
   const [w, h] = CONFIG.RESOLUTION.split('x').map((n) => parseInt(n, 10));
+  // Prefer RTMPS for Restream; upgrade scheme if needed
+  const target = (CONFIG.RTMP_TARGET || '').replace(/^rtmp:\/\//, 'rtmps://');
   const args = [
+    '-loglevel', 'info',
     '-re',
     ...(offsetSec > 0 ? ['-ss', String(Math.floor(offsetSec))] : []),
     '-i', inputUrl,
     '-c:v', 'libx264',
     '-preset', CONFIG.PRESET,
     '-profile:v', 'high',
+    '-pix_fmt', 'yuv420p',
     '-b:v', CONFIG.VIDEO_BITRATE,
     '-maxrate', CONFIG.VIDEO_BITRATE,
     '-bufsize', '10000k',
@@ -60,8 +64,10 @@ function ffmpegArgs(inputUrl, offsetSec = 0) {
     '-b:a', CONFIG.AUDIO_BITRATE,
     '-ar', '48000',
     '-ac', '2',
+    '-flvflags', 'no_duration_filesize',
     '-f', 'flv',
-    CONFIG.RTMP_TARGET,
+    '-rtmp_live', 'live',
+    target,
   ];
   return args;
 }
@@ -82,7 +88,10 @@ async function streamOnce(url, offsetSec) {
       const wasKilled = sig || code === null;
       CHILD = null;
       if (wasKilled) return resolve();
-      if (code === 0) resolve(); else reject(new Error(`ffmpeg exited ${code}`));
+      if (code === 0) resolve(); else {
+        console.error('ffmpeg exited with code', code);
+        reject(new Error(`ffmpeg exited ${code}`));
+      }
     });
   });
 }
@@ -116,14 +125,17 @@ async function streamBatch(urls) {
     await fs.writeFile(listPath, listContent, 'utf8');
     return new Promise((resolve, reject) => {
       const [w, h] = CONFIG.RESOLUTION.split('x').map((n) => parseInt(n, 10));
+      const target = (CONFIG.RTMP_TARGET || '').replace(/^rtmp:\/\//, 'rtmps://');
       const args = [
+        '-loglevel', 'info',
         '-re', '-f', 'concat', '-safe', '0', '-i', listPath,
         '-c:v', 'libx264', '-preset', CONFIG.PRESET, '-profile:v', 'high',
+        '-pix_fmt', 'yuv420p',
         '-b:v', CONFIG.VIDEO_BITRATE, '-maxrate', CONFIG.VIDEO_BITRATE, '-bufsize', '10000k',
         '-g', String(CONFIG.GOP), '-r', String(CONFIG.FPS),
         '-vf', `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`,
         '-c:a', 'aac', '-b:a', CONFIG.AUDIO_BITRATE, '-ar', '48000', '-ac', '2',
-        '-f', 'flv', CONFIG.RTMP_TARGET,
+        '-flvflags', 'no_duration_filesize', '-f', 'flv', '-rtmp_live', 'live', target,
       ];
       console.log('ffmpeg batch', args.join(' '));
       CHILD = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -134,7 +146,10 @@ async function streamBatch(urls) {
         // Cleanup
         Promise.allSettled(files.map(f => fs.unlink(f))).then(() => fs.unlink(listPath).catch(() => {}));
         if (sig || code === null) return resolve();
-        if (code === 0) resolve(); else reject(new Error(`ffmpeg exited ${code}`));
+        if (code === 0) resolve(); else {
+          console.error('ffmpeg batch exited with code', code);
+          reject(new Error(`ffmpeg exited ${code}`));
+        }
       });
     });
   } catch (e) {
