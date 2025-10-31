@@ -486,6 +486,29 @@ app.get('/feed/:channel/:week/:day/playlist', authMiddleware, async (req, res) =
   }
 });
 
+// Debug schedule status: which items exist in assets table and which are missing
+app.get('/debug/schedule/:channel/:week/:day', authMiddleware, async (req, res) => {
+  const { channel, week, day } = req.params;
+  try {
+    const client = await pool.connect();
+    try {
+      const sched = await client.query('select id from schedules where channel=$1 and week=$2 and day=$3', [channel, week, day]);
+      if (!sched.rows.length) return res.json({ scheduleItems: [], assetsFound: [], assetsMissing: [] });
+      const sid = sched.rows[0].id;
+      const items = await client.query('select asset_id from schedule_items where schedule_id=$1 order by position asc', [sid]);
+      const ids = items.rows.map(r => r.asset_id);
+      const assets = await client.query('select id, s3_key from assets where id = any($1)', [ids]);
+      const foundSet = new Set(assets.rows.map(r => r.id));
+      const assetsFound = assets.rows.map(r => ({ id: r.id, hasKey: !!r.s3_key }));
+      const assetsMissing = ids.filter(id => !foundSet.has(id));
+      return res.json({ scheduleItems: ids, assetsFound, assetsMissing });
+    } finally { client.release(); }
+  } catch (e) {
+    console.error('debug schedule error', e);
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
+
 app.get('/feed/:channel/:week/:day/now', authMiddleware, async (req, res) => {
   const { channel, week, day } = req.params;
   const at = req.query.at ? new Date(req.query.at) : new Date();

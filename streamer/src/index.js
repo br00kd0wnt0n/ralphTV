@@ -17,14 +17,14 @@ async function getJSON(url, opts = {}) {
   return res.json();
 }
 
+function dayName(d = new Date()) { return ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d.getDay()]; }
+
 async function playlist() {
-  const u = `${CONFIG.API_BASE_URL}/feed/${encodeURIComponent(CONFIG.CHANNEL)}/${encodeURIComponent(CONFIG.WEEK)}/today/playlist?withUrls=1`;
-  // fall back to exact day if /today not implemented
-  const today = new Date();
-  const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-  const day = days[today.getDay()];
-  const legacy = `${CONFIG.API_BASE_URL}/feed/${encodeURIComponent(CONFIG.CHANNEL)}/${encodeURIComponent(CONFIG.WEEK)}/${day}/playlist?withUrls=1`;
-  try { return await getJSON(u); } catch { return await getJSON(legacy); }
+  const override = process.env.STREAMER_DAY;
+  const day = override || dayName();
+  const url = `${CONFIG.API_BASE_URL}/feed/${encodeURIComponent(CONFIG.CHANNEL)}/${encodeURIComponent(CONFIG.WEEK)}/${day}/playlist?withUrls=1`;
+  console.log('[streamer] Fetching playlist for day:', day, url);
+  return getJSON(url);
 }
 
 async function now() {
@@ -183,6 +183,17 @@ async function main() {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       const sessionTimeSec = RUNNING && SESSION_STARTED_AT ? Math.floor((Date.now() - SESSION_STARTED_AT) / 1000) : 0;
       res.end(JSON.stringify({ running: RUNNING, current: CURRENT, sessionStartedAt: SESSION_STARTED_AT, sessionTimeSec }));
+      return;
+    }
+    if (req.url === '/debug/playlist') {
+      try {
+        const pl = await playlist();
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(pl));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: String(e?.message || e) }));
+      }
       return;
     }
     if (req.url === '/control/start' && req.method === 'POST') {
