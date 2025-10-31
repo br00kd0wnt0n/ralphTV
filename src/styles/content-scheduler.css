@@ -82,14 +82,14 @@
 .library-items-grid {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
   align-items: flex-start;
   align-content: flex-start;
   min-height: 100px;
 }
 
 .categories-panel > div {
-  padding: 8px;
+  padding: 10px;
 }
 
 /* Schedule day columns - 7 columns fit full width */
@@ -99,7 +99,7 @@
   border-left: 2px solid var(--border-light);
   border-right: 2px solid var(--border-dark);
   border-bottom: 2px solid var(--border-dark);
-  padding: 6px;
+  padding: 10px;
   flex: 1;
   min-width: 140px;
   min-height: 400px;

@@ -158,9 +158,9 @@ export default function LibraryPanel({
               style={{ display: 'none' }}
             />
           </div>
-          <div style={{ padding: 8 }}>
+          <div style={{ padding: 10 }}>
             {activeUploads.length > 0 && (
-              <div style={{ padding: 8, background: 'var(--bg-secondary)', marginBottom: 8, borderRadius: 4 }}>
+              <div style={{ padding: 10, background: 'var(--bg-secondary)', marginBottom: 10, borderRadius: 4 }}>
                 {activeUploads.map(it => (
                   <div key={it.id} style={{ fontSize: 10, marginBottom: 6, color: 'white' }}>
                     <div>{it.name} — {it.status} {it.status === 'uploading' ? `${it.progress}%` : ''}</div>
