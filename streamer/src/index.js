@@ -298,15 +298,12 @@ async function main() {
       const sec = parseInt(q.searchParams.get('seconds') || '30', 10) || 30;
       if (CHILD) { try { CHILD.kill('SIGINT'); } catch {} }
       RUNNING = false;
-      try {
-        await streamTestSignal(sec);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true }));
-      } catch (e) {
-        console.error('test-signal failed', e);
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: String(e?.message || e) }));
-      }
+      // Fire-and-forget the test signal so the HTTP call completes successfully
+      (async () => {
+        try { await streamTestSignal(sec); } catch (e) { console.error('test-signal failed', e); }
+      })();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, seconds: sec }));
       return;
     }
     res.writeHead(404, { 'Content-Type': 'text/plain' });
