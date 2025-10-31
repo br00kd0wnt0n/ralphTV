@@ -236,42 +236,44 @@ export default function ContentScheduler() {
       </div>
 
       <DragDropContext onDragEnd={onDragEnd}>
-        {/* Library - full width */}
-        <LibraryPanel
-          assets={assets}
-          categories={categories}
-          setAssets={setAssets}
-          onAssetUploaded={handleAssetUploaded}
-        />
+        <div className="content-layout">
+          {/* Library - full width */}
+          <LibraryPanel
+            assets={assets}
+            categories={categories}
+            setAssets={setAssets}
+            onAssetUploaded={handleAssetUploaded}
+          />
 
-        {/* Schedule Grid - full width */}
-        <div className="schedule-grid" style={{ position: 'relative' }}>
-            <PlayheadIndicator schedule={schedule} assetMap={assetMap} />
-            {DAYS.map((day) => (
-              <Droppable droppableId={day} key={day}>
-                {(provided) => (
-                  <DayColumn
-                    day={day}
-                    items={schedule[day]}
-                    provided={provided}
-                    assetMap={assetMap}
-                    categories={categories}
-                    onSelect={(id) => setSelectedAssetId(id)}
-                    onDelete={(itemId) => handleDeleteFromSchedule(day, itemId)}
-                    playbackMode={playback[day]?.mode}
-                    playStart={playback[day]?.start}
-                    onPlaybackChange={(mode, start) => {
-                      setPlayback(prev => ({ ...prev, [day]: { mode, start } }));
-                      saveDayToBackend(day, schedule[day]);
-                    }}
-                  />
-                )}
-              </Droppable>
-            ))}
+          {/* Schedule Grid - full width */}
+          <div className="schedule-grid" style={{ position: 'relative' }}>
+              <PlayheadIndicator schedule={schedule} assetMap={assetMap} />
+              {DAYS.map((day) => (
+                <Droppable droppableId={day} key={day}>
+                  {(provided) => (
+                    <DayColumn
+                      day={day}
+                      items={schedule[day]}
+                      provided={provided}
+                      assetMap={assetMap}
+                      categories={categories}
+                      onSelect={(id) => setSelectedAssetId(id)}
+                      onDelete={(itemId) => handleDeleteFromSchedule(day, itemId)}
+                      playbackMode={playback[day]?.mode}
+                      playStart={playback[day]?.start}
+                      onPlaybackChange={(mode, start) => {
+                        setPlayback(prev => ({ ...prev, [day]: { mode, start } }));
+                        saveDayToBackend(day, schedule[day]);
+                      }}
+                    />
+                  )}
+                </Droppable>
+              ))}
+          </div>
+
+          {/* Categories panel - full width below schedule */}
+          <CategoriesPanel categories={categories} onChange={setCategories} apiEnabled={!!CONFIG.API_BASE_URL} />
         </div>
-
-        {/* Categories panel - full width below schedule */}
-        <CategoriesPanel categories={categories} onChange={setCategories} apiEnabled={!!CONFIG.API_BASE_URL} />
       </DragDropContext>
 
       {/* Preview Modal */}
