@@ -133,7 +133,7 @@ export default function PreviewPane({
           {category && (
             <div className="metadata-row">
               <label>Category:</label>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
                 <span
                   style={{
                     width: 10,
@@ -141,7 +141,8 @@ export default function PreviewPane({
                     borderRadius: '50%',
                     background: category.color,
                     border: '1px solid rgba(0,0,0,0.3)',
-                    display: 'inline-block'
+                    display: 'inline-block',
+                    flexShrink: 0
                   }}
                 />
                 {category.name}

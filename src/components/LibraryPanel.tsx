@@ -35,6 +35,7 @@ export default function LibraryPanel({
   const apiEnabled = !!CONFIG.API_BASE_URL;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploadItems, setUploadItems] = useState<UploadItem[]>([]);
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
 
   const handleFiles: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
     const files = Array.from(e.target.files || []);
@@ -113,19 +114,41 @@ export default function LibraryPanel({
 
   const activeUploads = useMemo(() => uploadItems.filter(i => i.status !== 'done'), [uploadItems]);
 
+  const filteredAssets = useMemo(() => {
+    if (categoryFilter === 'all') return assets;
+    if (categoryFilter === 'uncategorized') return assets.filter(a => !a.categoryId);
+    return assets.filter(a => a.categoryId === categoryFilter);
+  }, [assets, categoryFilter]);
+
   return (
     <Droppable droppableId="library">
       {(provided) => (
         <div className="uploaded-content" ref={provided.innerRef} {...provided.droppableProps}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
             <h3>Uploaded Content</h3>
-            <button
-              className="win95-button"
-              onClick={() => fileInputRef.current?.click()}
-              style={{ fontSize: 10, padding: '2px 8px', margin: '2px 4px' }}
-            >
-              Upload Files
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <label style={{ fontSize: 10, color: 'white' }}>Filter:</label>
+              <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                style={{ fontSize: 10, padding: '2px 4px' }}
+              >
+                <option value="all">All ({assets.length})</option>
+                <option value="uncategorized">Uncategorized ({assets.filter(a => !a.categoryId).length})</option>
+                {categories.map(cat => (
+                  <option key={cat.id} value={cat.id}>
+                    {cat.name} ({assets.filter(a => a.categoryId === cat.id).length})
+                  </option>
+                ))}
+              </select>
+              <button
+                className="win95-button"
+                onClick={() => fileInputRef.current?.click()}
+                style={{ fontSize: 10, padding: '2px 8px' }}
+              >
+                Upload Files
+              </button>
+            </div>
             <input
               ref={fileInputRef}
               type="file"
@@ -153,13 +176,13 @@ export default function LibraryPanel({
                 ))}
               </div>
             )}
-            {assets.length === 0 && activeUploads.length === 0 && (
+            {filteredAssets.length === 0 && activeUploads.length === 0 && (
               <div style={{ padding: '12px 0', fontSize: 10, color: 'black', textAlign: 'center', fontStyle: 'italic' }}>
-                No assets yet. Click Upload Files to get started!
+                {assets.length === 0 ? 'No assets yet. Click Upload Files to get started!' : 'No assets match this filter.'}
               </div>
             )}
             <LibraryList
-              assets={assets}
+              assets={filteredAssets}
               categories={categories}
               onChangeTags={(assetId, tags) => {
                 setAssets((prev) => prev.map((a) => (a.id === assetId ? { ...a, tags } : a)));

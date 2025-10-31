@@ -54,7 +54,8 @@ export default function DayColumn({
                 title={asset?.name}
                 style={{
                   height: durationToHeightPx(asset?.durationSec, false),
-                  ...(color ? { borderLeftColor: color, borderLeftWidth: '6px' } : {})
+                  ...(color ? { borderLeft: `6px solid ${color}` } : {}),
+                  ...provided.draggableProps.style
                 }}
                 onClick={() => asset && onSelect?.(asset.id)}
               >
