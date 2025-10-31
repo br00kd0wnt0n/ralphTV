@@ -93,6 +93,8 @@ const SLATE_ASSET_ID = process.env.STREAMER_SLATE_ASSET_ID || '';
 const SLATE_BETWEEN_SEC = parseInt(process.env.STREAMER_SLATE_BETWEEN_SEC || '0', 10) || 0;
 const SLATE_IDLE_SEC = parseInt(process.env.STREAMER_SLATE_IDLE_SEC || '30', 10) || 30;
 const MIN_SEC = parseInt(process.env.STREAMER_MIN_SEC || '0', 10) || 0;
+const CONTINUOUS = (process.env.STREAMER_CONTINUOUS === 'true');
+const CONTINUOUS_LOOPS = parseInt(process.env.STREAMER_CONTINUOUS_LOOPS || '3', 10) || 3;
 
 async function streamOnce(url, offsetSec) {
   // Download remote to a local temp file for stable decoding
@@ -337,6 +339,77 @@ async function streamSlate(seconds) {
   });
 }
 
+async function buildContinuousList(items) {
+  // Normalize all items and create a concat list with optional slate between
+  const toCleanup = [];
+  const normItems = [];
+  for (let i = 0; i < items.length; i++) {
+    const u = items[i].url || (await presignedUrl(items[i].assetId));
+    const dl = await downloadToTemp(u, `cont_${i}`);
+    toCleanup.push(dl);
+    let nm = dl;
+    if (NORMALIZE) {
+      nm = await normalizeToTemp(dl, `cont_norm_${i}`);
+      toCleanup.push(nm);
+    }
+    normItems.push({ path: nm, durationSec: Math.max(1, Math.floor(items[i].durationSec || 0)) });
+  }
+  const slate = await ensureSlateLocal();
+  const listPath = path.join(os.tmpdir(), `ralphtv_cont_${Date.now()}.txt`);
+  let lines = [];
+  // Build N loops
+  for (let loop = 0; loop < Math.max(1, CONTINUOUS_LOOPS); loop++) {
+    for (let i = 0; i < normItems.length; i++) {
+      const it = normItems[i];
+      // Specify duration for item to keep cadence (optional)
+      if (it.durationSec) lines.push(`duration ${it.durationSec}`);
+      lines.push(`file '${it.path.replace(/'/g, "'\\''")}'`);
+      // Insert slate between items
+      if (SLATE_BETWEEN_SEC > 0 && slate) {
+        lines.push(`duration ${SLATE_BETWEEN_SEC}`);
+        lines.push(`file '${slate.replace(/'/g, "'\\''")}'`);
+      }
+    }
+    // End-of-loop slate to hide reconnect if process ends here
+    if (slate && SLATE_IDLE_SEC > 0) {
+      lines.push(`duration ${SLATE_IDLE_SEC}`);
+      lines.push(`file '${slate.replace(/'/g, "'\\''")}'`);
+    }
+  }
+  await fs.writeFile(listPath, lines.join('\n'), 'utf8');
+  return { listPath, toCleanup };
+}
+
+async function streamContinuous(items) {
+  const [w, h] = CONFIG.RESOLUTION.split('x').map((n) => parseInt(n, 10));
+  const target = (process.env.STREAMER_FORCE_RTMPS === 'true')
+    ? (CONFIG.RTMP_TARGET || '').replace(/^rtmp:\/\//, 'rtmps://')
+    : (CONFIG.RTMP_TARGET || '');
+  const { listPath, toCleanup } = await buildContinuousList(items);
+  const args = [
+    '-loglevel', 'info',
+    '-re', '-f', 'concat', '-safe', '0', '-i', listPath,
+    '-c:v', 'libx264', '-preset', CONFIG.PRESET, '-profile:v', 'high', '-pix_fmt', 'yuv420p',
+    '-b:v', CONFIG.VIDEO_BITRATE, '-maxrate', CONFIG.VIDEO_BITRATE, '-bufsize', '10000k',
+    '-g', String(CONFIG.GOP), '-r', String(CONFIG.FPS),
+    '-vf', `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`,
+    '-c:a', 'aac', '-b:a', CONFIG.AUDIO_BITRATE, '-ar', '48000', '-ac', '2',
+    '-flvflags', 'no_duration_filesize', '-f', 'flv', '-rtmp_live', 'live', target,
+  ];
+  console.log('ffmpeg continuous', args.join(' '));
+  await new Promise((resolve, reject) => {
+    CHILD = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    CHILD.on('error', (err) => { console.error('ffmpeg continuous spawn error', err); reject(err); });
+    CHILD.stdout.on('data', (d) => process.stdout.write(d.toString()));
+    CHILD.stderr.on('data', (d) => process.stderr.write(d.toString()));
+    CHILD.on('exit', (code) => {
+      CHILD = null;
+      Promise.allSettled(toCleanup.map(f => fs.unlink(f))).then(() => fs.unlink(listPath).catch(() => {}));
+      if (code === 0) resolve(); else reject(new Error('continuous exit ' + code));
+    });
+  });
+}
+
 async function main() {
   if (!CONFIG.API_BASE_URL || !CONFIG.RTMP_TARGET) {
     console.error('Missing API_BASE_URL or RTMP_TARGET');
@@ -461,6 +534,18 @@ async function main() {
         console.log('No playlist items. Slate for idle...');
         try { await streamSlate(SLATE_IDLE_SEC); } catch (e) { console.error('idle slate failed', e); await sleep(5000); }
         continue; 
+      }
+
+      // Continuous mode: single ffmpeg process for the entire set
+      if (CONTINUOUS) {
+        try {
+          await streamContinuous(items);
+        } catch (e) {
+          console.error('continuous mode error', e);
+          // show slate briefly and retry
+          try { await streamSlate(Math.min(10, SLATE_IDLE_SEC)); } catch {}
+        }
+        continue;
       }
       let idx = Math.max(0, Math.min(items.length - 1, ptr.index || 0));
       let offset = Math.max(0, ptr.offsetSec || 0);
