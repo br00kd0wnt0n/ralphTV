@@ -24,7 +24,14 @@ async function playlist() {
   const day = override || dayName();
   const url = `${CONFIG.API_BASE_URL}/feed/${encodeURIComponent(CONFIG.CHANNEL)}/${encodeURIComponent(CONFIG.WEEK)}/${day}/playlist?withUrls=1`;
   console.log('[streamer] Fetching playlist for day:', day, url);
-  return getJSON(url);
+  const pl = await getJSON(url);
+  if (MIN_SEC > 0 && Array.isArray(pl.items)) {
+    const before = pl.items.length;
+    pl.items = pl.items.filter((it) => (it.durationSec || 0) >= MIN_SEC);
+    const after = pl.items.length;
+    if (before !== after) console.log(`[streamer] Filtered ${before - after} items shorter than ${MIN_SEC}s`);
+  }
+  return pl;
 }
 
 async function now() {
@@ -81,6 +88,11 @@ let SESSION_STARTED_AT = null;
 const NORMALIZE = (process.env.STREAMER_NORMALIZE === 'true');
 const DISABLE_BATCH = (process.env.STREAMER_DISABLE_BATCH === 'true');
 const MAX_RETRIES = parseInt(process.env.STREAMER_MAX_RETRIES || '1', 10) || 1;
+const SLATE_URL = process.env.STREAMER_SLATE_URL || '';
+const SLATE_ASSET_ID = process.env.STREAMER_SLATE_ASSET_ID || '';
+const SLATE_BETWEEN_SEC = parseInt(process.env.STREAMER_SLATE_BETWEEN_SEC || '0', 10) || 0;
+const SLATE_IDLE_SEC = parseInt(process.env.STREAMER_SLATE_IDLE_SEC || '30', 10) || 30;
+const MIN_SEC = parseInt(process.env.STREAMER_MIN_SEC || '0', 10) || 0;
 
 async function streamOnce(url, offsetSec) {
   // Download remote to a local temp file for stable decoding
