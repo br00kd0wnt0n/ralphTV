@@ -18,6 +18,7 @@ import { useDurationBackfill } from '../hooks/useDurationBackfill';
 import OnAirTile from './OnAirTile';
 import StreamerControls from './StreamerControls';
 import PreviewPane from './PreviewPane';
+import PlayheadIndicator from './PlayheadIndicator';
 
 export default function ContentScheduler() {
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -236,7 +237,8 @@ export default function ContentScheduler() {
 
       <DragDropContext onDragEnd={onDragEnd}>
         {/* Schedule Grid - full width outside grid */}
-        <div className="schedule-grid">
+        <div className="schedule-grid" style={{ position: 'relative' }}>
+            <PlayheadIndicator schedule={schedule} assetMap={assetMap} />
             {DAYS.map((day) => (
               <Droppable droppableId={day} key={day}>
                 {(provided) => (

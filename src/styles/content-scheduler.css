@@ -437,6 +437,22 @@
   border-radius: 2px;
 }
 
+/* Playhead indicator */
+.playhead-indicator {
+  transition: all 0.5s ease-out;
+}
+
+@keyframes pulse-playhead {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 8px var(--brand-pink);
+  }
+  50% {
+    opacity: 0.7;
+    box-shadow: 0 0 16px var(--brand-pink);
+  }
+}
+
 /* Compact view adjustments */
 .content-scheduler.compact .scheduled-item {
   padding: 3px 6px;

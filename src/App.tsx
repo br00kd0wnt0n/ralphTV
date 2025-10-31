@@ -6,7 +6,7 @@ function App() {
     <div>
       <div className="app-header">
         <img src="/logo.png" alt="Ralph" className="app-logo" />
-        <h1>CONTENT SCHEDULER</h1>
+        <h1>BROADCASTER</h1>
       </div>
       <Protected>
         <ContentScheduler />
