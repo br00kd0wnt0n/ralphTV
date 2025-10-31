@@ -69,6 +69,7 @@ function ffmpegArgs(inputUrl, offsetSec = 0) {
 let RUNNING = false;
 let CHILD = null;
 let CURRENT = null; // { assetId, index, startedAt, url }
+let SESSION_STARTED_AT = null;
 
 async function streamOnce(url, offsetSec) {
   return new Promise((resolve, reject) => {
@@ -165,11 +166,13 @@ async function main() {
     }
     if (req.url === '/status') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ running: RUNNING, current: CURRENT }));
+      const sessionTimeSec = RUNNING && SESSION_STARTED_AT ? Math.floor((Date.now() - SESSION_STARTED_AT) / 1000) : 0;
+      res.end(JSON.stringify({ running: RUNNING, current: CURRENT, sessionStartedAt: SESSION_STARTED_AT, sessionTimeSec }));
       return;
     }
     if (req.url === '/control/start' && req.method === 'POST') {
       RUNNING = true;
+      if (!SESSION_STARTED_AT) SESSION_STARTED_AT = Date.now();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true }));
       return;
@@ -179,6 +182,17 @@ async function main() {
       if (CHILD) {
         try { CHILD.kill('SIGINT'); } catch {}
       }
+      SESSION_STARTED_AT = null;
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+    if (req.url === '/control/restart' && req.method === 'POST') {
+      RUNNING = false;
+      if (CHILD) {
+        try { CHILD.kill('SIGINT'); } catch {}
+      }
+      setTimeout(() => { RUNNING = true; SESSION_STARTED_AT = Date.now(); }, 800);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true }));
       return;

@@ -21,3 +21,8 @@ export async function streamerStop() {
   return res.json();
 }
 
+export async function streamerRestart() {
+  const res = await fetch(`${base()}/control/restart`, { method: 'POST' });
+  if (!res.ok) throw new Error(`streamer restart failed: ${res.status}`);
+  return res.json();
+}
