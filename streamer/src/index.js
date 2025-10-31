@@ -82,6 +82,7 @@ async function streamOnce(url, offsetSec) {
     const args = ffmpegArgs(url, offsetSec);
     console.log('ffmpeg', args.join(' '));
     CHILD = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    CHILD.on('error', (err) => { console.error('ffmpeg spawn error', err); reject(err); });
     CHILD.stdout.on('data', (d) => process.stdout.write(d.toString()));
     CHILD.stderr.on('data', (d) => process.stderr.write(d.toString()));
     CHILD.on('exit', (code, sig) => {
@@ -139,6 +140,7 @@ async function streamBatch(urls) {
       ];
       console.log('ffmpeg batch', args.join(' '));
       CHILD = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+      CHILD.on('error', (err) => { console.error('ffmpeg batch spawn error', err); reject(err); });
       CHILD.stdout.on('data', (d) => process.stdout.write(d.toString()));
       CHILD.stderr.on('data', (d) => process.stderr.write(d.toString()));
       CHILD.on('exit', (code, sig) => {
@@ -177,6 +179,7 @@ async function streamTestSignal(seconds = 30) {
     ];
     console.log('ffmpeg test-signal', args.join(' '));
     CHILD = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    CHILD.on('error', (err) => { console.error('ffmpeg test-signal spawn error', err); reject(err); });
     CHILD.stdout.on('data', (d) => process.stdout.write(d.toString()));
     CHILD.stderr.on('data', (d) => process.stderr.write(d.toString()));
     CHILD.on('exit', (code, sig) => {
@@ -227,6 +230,24 @@ async function main() {
       }
       return;
     }
+    if (req.url === '/debug/ffmpeg') {
+      try {
+        await new Promise((resolve, reject) => {
+          const c = spawn('ffmpeg', ['-version'], { stdio: ['ignore', 'pipe', 'pipe'] });
+          let out = '';
+          c.stdout.on('data', (d) => out += d.toString());
+          c.stderr.on('data', (d) => out += d.toString());
+          c.on('error', reject);
+          c.on('exit', (code) => code === 0 ? resolve(out) : reject(new Error('ffmpeg exit ' + code)) );
+        });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ present: true }));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ present: false, error: String(e?.message || e) }));
+      }
+      return;
+    }
     if (req.url === '/control/start' && req.method === 'POST') {
       RUNNING = true;
       if (!SESSION_STARTED_AT) SESSION_STARTED_AT = Date.now();
@@ -265,6 +286,7 @@ async function main() {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true }));
       } catch (e) {
+        console.error('test-signal failed', e);
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: String(e?.message || e) }));
       }
