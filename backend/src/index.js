@@ -240,6 +240,8 @@ app.put('/schedule/:channel/:week/:day', authMiddleware, async (req, res) => {
       }
       const row = updated.rows[0];
       await client.query('commit');
+      // Realtime broadcast
+      broadcast(`schedule:${channel}:${week}:${day}`, { doc: { version: row.version, items } });
       return res.json({ version: row.version, items, playbackMode: row.playback_mode, playStart: row.play_start });
     } catch (e) {
       await pool.query('rollback');
@@ -289,6 +291,8 @@ app.patch('/schedule/:channel/:week/:day', authMiddleware, async (req, res) => {
       }
       const row = updated.rows[0];
       await client.query('commit');
+      // Realtime broadcast
+      broadcast(`schedule:${channel}:${week}:${day}`, { doc: { version: row.version, items } });
       return res.json({ version: row.version, items, playbackMode: row.playback_mode, playStart: row.play_start });
     } catch (e) {
       await pool.query('rollback');
