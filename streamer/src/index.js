@@ -159,6 +159,37 @@ async function streamBatch(urls) {
   }
 }
 
+async function streamTestSignal(seconds = 30) {
+  return new Promise((resolve, reject) => {
+    const [w, h] = CONFIG.RESOLUTION.split('x').map((n) => parseInt(n, 10));
+    const target = (CONFIG.RTMP_TARGET || '').replace(/^rtmp:\/\//, 'rtmps://');
+    const args = [
+      '-loglevel', 'info',
+      '-re', '-f', 'lavfi', '-i', `testsrc=size=${w}x${h}:rate=${CONFIG.FPS}`,
+      '-f', 'lavfi', '-i', `sine=frequency=1000:sample_rate=48000`,
+      '-t', String(Math.max(5, seconds)),
+      '-c:v', 'libx264', '-preset', CONFIG.PRESET, '-profile:v', 'high', '-pix_fmt', 'yuv420p',
+      '-b:v', CONFIG.VIDEO_BITRATE, '-maxrate', CONFIG.VIDEO_BITRATE, '-bufsize', '10000k',
+      '-g', String(CONFIG.GOP), '-r', String(CONFIG.FPS),
+      '-vf', `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`,
+      '-c:a', 'aac', '-b:a', CONFIG.AUDIO_BITRATE, '-ar', '48000', '-ac', '2',
+      '-flvflags', 'no_duration_filesize', '-f', 'flv', '-rtmp_live', 'live', target,
+    ];
+    console.log('ffmpeg test-signal', args.join(' '));
+    CHILD = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    CHILD.stdout.on('data', (d) => process.stdout.write(d.toString()));
+    CHILD.stderr.on('data', (d) => process.stderr.write(d.toString()));
+    CHILD.on('exit', (code, sig) => {
+      CHILD = null;
+      if (sig || code === null) return resolve();
+      if (code === 0) resolve(); else {
+        console.error('ffmpeg test-signal exited with code', code);
+        reject(new Error(`ffmpeg exited ${code}`));
+      }
+    });
+  });
+}
+
 async function main() {
   if (!CONFIG.API_BASE_URL || !CONFIG.RTMP_TARGET) {
     console.error('Missing API_BASE_URL or RTMP_TARGET');
@@ -221,6 +252,22 @@ async function main() {
       setTimeout(() => { RUNNING = true; SESSION_STARTED_AT = Date.now(); }, 800);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+    if (req.url && req.url.startsWith('/control/test-signal') && req.method === 'POST') {
+      // Optional seconds param via query
+      const q = new URL(req.url, 'http://localhost');
+      const sec = parseInt(q.searchParams.get('seconds') || '30', 10) || 30;
+      if (CHILD) { try { CHILD.kill('SIGINT'); } catch {} }
+      RUNNING = false;
+      try {
+        await streamTestSignal(sec);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true }));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: String(e?.message || e) }));
+      }
       return;
     }
     res.writeHead(404, { 'Content-Type': 'text/plain' });

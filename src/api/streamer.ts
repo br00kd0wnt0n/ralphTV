@@ -26,3 +26,9 @@ export async function streamerRestart() {
   if (!res.ok) throw new Error(`streamer restart failed: ${res.status}`);
   return res.json();
 }
+
+export async function streamerTestSignal(seconds = 30) {
+  const res = await fetch(`${base()}/control/test-signal?seconds=${encodeURIComponent(String(seconds))}`, { method: 'POST' });
+  if (!res.ok) throw new Error(`streamer test-signal failed: ${res.status}`);
+  return res.json();
+}

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { streamerStatus, streamerStart, streamerStop, streamerRestart } from '../api/streamer';
+import { streamerStatus, streamerStart, streamerStop, streamerRestart, streamerTestSignal } from '../api/streamer';
 import { formatDuration } from '../state/schedule';
 
 export default function StreamerControls() {
@@ -34,6 +34,7 @@ export default function StreamerControls() {
       <button className="win95-button" onClick={async () => { await streamerStart(); refresh(); }} disabled={running}>Start</button>
       <button className="win95-button" onClick={async () => { await streamerStop(); refresh(); }} disabled={!running}>Stop</button>
       <button className="win95-button" onClick={async () => { await streamerRestart(); setTimeout(refresh, 1200); }}>Restart</button>
+      <button className="win95-button" onClick={async () => { await streamerTestSignal(30); refresh(); }}>Test Signal (30s)</button>
       {running && (
         <div style={{ fontSize: 10, width: '100%', color: 'black' }}>Session {formatDuration(sessionSec)}</div>
       )}
