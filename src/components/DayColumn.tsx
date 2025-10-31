@@ -41,7 +41,7 @@ export default function DayColumn({
           {`${formatDuration(total)}${unknown ? ` (${unknown} unknown)` : ''}`}
         </span>
       </h4>
-      {items.map((item, index) => {
+      {items.filter(item => item != null).map((item, index) => {
         const asset = assetMap.get(item.assetId);
         const category = categories.find(c => c.id === asset?.categoryId);
         const color = category?.color;

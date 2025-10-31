@@ -33,8 +33,8 @@ export default function PlayheadIndicator({
         // Find which day and item is currently playing
         if (status?.item && status?.day) {
           const day = status.day as Day;
-          const items = schedule[day];
-          const itemIndex = items.findIndex(it => it.assetId === status.item.assetId);
+          const items = schedule[day] || [];
+          const itemIndex = items.findIndex(it => it?.assetId === status.item.assetId);
 
           if (itemIndex !== -1) {
             setPlayhead({
@@ -86,18 +86,21 @@ export default function PlayheadIndicator({
   if (!playhead || leftPosition === null) return null;
 
   // Calculate the vertical position of the playhead
-  const items = schedule[playhead.day];
+  const items = schedule[playhead.day] || [];
   let accumulatedHeight = 0;
 
   // Add heights of all items before the current one
   for (let i = 0; i < playhead.itemIndex; i++) {
+    if (!items[i]) continue;
     const asset = assetMap.get(items[i].assetId);
     accumulatedHeight += durationToHeightPx(asset?.durationSec, false);
     accumulatedHeight += 8; // margin between items (4px top + 4px bottom)
   }
 
   // Add the offset within the current item
-  const currentAsset = assetMap.get(items[playhead.itemIndex].assetId);
+  const currentItem = items[playhead.itemIndex];
+  if (!currentItem) return null;
+  const currentAsset = assetMap.get(currentItem.assetId);
   if (currentAsset?.durationSec) {
     const progress = playhead.offsetSec / currentAsset.durationSec;
     const itemHeight = durationToHeightPx(currentAsset.durationSec, false);
