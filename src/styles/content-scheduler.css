@@ -85,13 +85,8 @@
   text-shadow: 1px 1px 0 rgba(0,0,0,0.3);
 }
 
-/* Content area inside panels */
-.uploaded-content > div {
-  padding: 8px;
-}
-
-/* Make library items wrap horizontally */
-.uploaded-content > div:last-of-type {
+/* Library items grid - dedicated flex container for draggable items */
+.library-items-grid {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;

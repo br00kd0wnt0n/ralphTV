@@ -158,9 +158,9 @@ export default function LibraryPanel({
               style={{ display: 'none' }}
             />
           </div>
-          <div>
+          <div style={{ padding: 8 }}>
             {activeUploads.length > 0 && (
-              <div style={{ padding: 8, background: 'var(--bg-secondary)', margin: 8, borderRadius: 4 }}>
+              <div style={{ padding: 8, background: 'var(--bg-secondary)', marginBottom: 8, borderRadius: 4 }}>
                 {activeUploads.map(it => (
                   <div key={it.id} style={{ fontSize: 10, marginBottom: 6, color: 'white' }}>
                     <div>{it.name} — {it.status} {it.status === 'uploading' ? `${it.progress}%` : ''}</div>
@@ -181,18 +181,20 @@ export default function LibraryPanel({
                 {assets.length === 0 ? 'No assets yet. Click Upload Files to get started!' : 'No assets match this filter.'}
               </div>
             )}
-            <LibraryList
-              assets={filteredAssets}
-              categories={categories}
-              onChangeTags={(assetId, tags) => {
-                setAssets((prev) => prev.map((a) => (a.id === assetId ? { ...a, tags } : a)));
-                if (apiEnabled) updateAssetTags({ assetId, tags }).catch(() => {});
-              }}
-              onChangeCategory={(assetId, categoryId) => {
-                setAssets((prev) => prev.map((a) => (a.id === assetId ? { ...a, categoryId } : a)));
-                if (apiEnabled) setAssetCategory({ assetId, categoryId }).catch(() => {});
-              }}
-            />
+            <div className="library-items-grid">
+              <LibraryList
+                assets={filteredAssets}
+                categories={categories}
+                onChangeTags={(assetId, tags) => {
+                  setAssets((prev) => prev.map((a) => (a.id === assetId ? { ...a, tags } : a)));
+                  if (apiEnabled) updateAssetTags({ assetId, tags }).catch(() => {});
+                }}
+                onChangeCategory={(assetId, categoryId) => {
+                  setAssets((prev) => prev.map((a) => (a.id === assetId ? { ...a, categoryId } : a)));
+                  if (apiEnabled) setAssetCategory({ assetId, categoryId }).catch(() => {});
+                }}
+              />
+            </div>
           </div>
           {provided.placeholder}
         </div>
