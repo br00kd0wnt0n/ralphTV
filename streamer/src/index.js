@@ -230,6 +230,17 @@ async function main() {
       }
       return;
     }
+    if (req.url === '/debug/config') {
+      const cfg = {
+        channel: CONFIG.CHANNEL,
+        week: CONFIG.WEEK,
+        rtmpTarget: (CONFIG.RTMP_TARGET || '').slice(0, 16) + '…',
+        streamerDay: process.env.STREAMER_DAY || null,
+      };
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(cfg));
+      return;
+    }
     if (req.url === '/debug/ffmpeg') {
       try {
         await new Promise((resolve, reject) => {
