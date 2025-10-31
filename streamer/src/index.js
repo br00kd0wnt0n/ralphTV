@@ -276,6 +276,55 @@ async function streamTestSignal(seconds = 30) {
   });
 }
 
+let SLATE_LOCAL = null;
+async function ensureSlateLocal() {
+  if (!SLATE_URL) return null;
+  if (SLATE_LOCAL) return SLATE_LOCAL;
+  try {
+    const dl = await downloadToTemp(SLATE_URL, 'slate');
+    if (NORMALIZE) {
+      const nm = await normalizeToTemp(dl, 'slate_norm');
+      SLATE_LOCAL = nm;
+    } else {
+      SLATE_LOCAL = dl;
+    }
+    return SLATE_LOCAL;
+  } catch (e) {
+    console.error('Failed to prepare slate', e);
+    return null;
+  }
+}
+
+async function streamSlate(seconds) {
+  const local = await ensureSlateLocal();
+  if (!local) {
+    await streamTestSignal(seconds);
+    return;
+  }
+  const [w, h] = CONFIG.RESOLUTION.split('x').map((n) => parseInt(n, 10));
+  const target = (process.env.STREAMER_FORCE_RTMPS === 'true')
+    ? (CONFIG.RTMP_TARGET || '').replace(/^rtmp:\/\//, 'rtmps://')
+    : (CONFIG.RTMP_TARGET || '');
+  const args = [
+    '-loglevel', 'info', '-stream_loop', '-1', '-re', '-i', local,
+    '-t', String(Math.max(1, seconds)),
+    '-c:v', 'libx264', '-preset', CONFIG.PRESET, '-profile:v', 'high', '-pix_fmt', 'yuv420p',
+    '-b:v', CONFIG.VIDEO_BITRATE, '-maxrate', CONFIG.VIDEO_BITRATE, '-bufsize', '10000k',
+    '-g', String(CONFIG.GOP), '-r', String(CONFIG.FPS),
+    '-vf', `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`,
+    '-c:a', 'aac', '-b:a', CONFIG.AUDIO_BITRATE, '-ar', '48000', '-ac', '2',
+    '-flvflags', 'no_duration_filesize', '-f', 'flv', '-rtmp_live', 'live', target,
+  ];
+  console.log('ffmpeg slate', args.join(' '));
+  await new Promise((resolve, reject) => {
+    const p = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    p.on('error', reject);
+    p.stdout.on('data', (d) => process.stdout.write(d.toString()));
+    p.stderr.on('data', (d) => process.stderr.write(d.toString()));
+    p.on('exit', (code) => code === 0 ? resolve() : reject(new Error('slate exit ' + code)));
+  });
+}
+
 async function main() {
   if (!CONFIG.API_BASE_URL || !CONFIG.RTMP_TARGET) {
     console.error('Missing API_BASE_URL or RTMP_TARGET');
@@ -396,7 +445,11 @@ async function main() {
       const pl = await playlist();
       const ptr = await now();
       const items = pl.items || [];
-      if (!items.length) { console.log('No playlist items. Sleeping...'); await sleep(15000); continue; }
+      if (!items.length) { 
+        console.log('No playlist items. Slate for idle...');
+        try { await streamSlate(SLATE_IDLE_SEC); } catch (e) { console.error('idle slate failed', e); await sleep(5000); }
+        continue; 
+      }
       let idx = Math.max(0, Math.min(items.length - 1, ptr.index || 0));
       let offset = Math.max(0, ptr.offsetSec || 0);
 
@@ -413,6 +466,9 @@ async function main() {
         while (attempts <= MAX_RETRIES) {
           try { await streamOnce(firstUrl, offset); break; }
           catch (e) { attempts++; console.error(`first item failed (attempt ${attempts})`, e); if (attempts > MAX_RETRIES) throw e; }
+        }
+        if (SLATE_BETWEEN_SEC > 0 && (DISABLE_BATCH || idx + 1 >= items.length)) {
+          try { await streamSlate(SLATE_BETWEEN_SEC); } catch (e) { console.error('between slate failed', e); }
         }
       }
       if (idx + 1 < items.length && RUNNING) {
@@ -436,6 +492,7 @@ async function main() {
                 try { await streamOnce(u, 0); break; }
                 catch (err) { attempts++; console.error(`item ${idx+1+j} failed (attempt ${attempts})`, err); if (attempts > MAX_RETRIES) break; }
               }
+              if (SLATE_BETWEEN_SEC > 0) { try { await streamSlate(SLATE_BETWEEN_SEC); } catch (e) {} }
             }
           }
         } else if (urls.length && DISABLE_BATCH) {
@@ -447,6 +504,7 @@ async function main() {
               try { await streamOnce(urls[j], 0); break; }
               catch (err) { attempts++; console.error(`item ${idx+1+j} failed (attempt ${attempts})`, err); if (attempts > MAX_RETRIES) break; }
             }
+            if (SLATE_BETWEEN_SEC > 0) { try { await streamSlate(SLATE_BETWEEN_SEC); } catch (e) {} }
           }
         }
       }
@@ -454,7 +512,7 @@ async function main() {
       if (mode === 'playthru') {
         console.log('Play-through ended. Sleeping...');
         CURRENT = null;
-        await sleep(60000);
+        try { await streamSlate(SLATE_IDLE_SEC); } catch (e) { console.error('end slate failed', e); await sleep(5000); }
         continue;
       }
 
@@ -488,6 +546,7 @@ async function main() {
               try { await streamOnce(urls[j], 0); break; }
               catch (err) { attempts++; console.error(`loop item ${j} failed (attempt ${attempts})`, err); if (attempts > MAX_RETRIES) break; }
             }
+            if (SLATE_BETWEEN_SEC > 0) { try { await streamSlate(SLATE_BETWEEN_SEC); } catch (e) {} }
           }
         }
       }
