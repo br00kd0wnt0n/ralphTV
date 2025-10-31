@@ -8,27 +8,34 @@
 
 .content-layout {
   display: grid;
-  grid-template-columns: 280px 1fr;
+  grid-template-columns: 280px 1fr 280px;
   grid-template-rows: auto auto auto;
   gap: 12px;
   align-items: start;
 }
 
-/* Left sidebar: Library + Categories stacked */
+/* Top row: Uploaded content spans full width */
 .content-layout > .uploaded-content:nth-child(1) {
-  grid-column: 1;
+  grid-column: 1 / -1;
   grid-row: 1;
+  max-width: 100%;
 }
 
+.content-layout > .uploaded-content:nth-child(1) > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Middle row: Categories, Schedule Grid, Preview */
 .content-layout > div[style*="Categories"] {
   grid-column: 1;
   grid-row: 2;
 }
 
-/* Schedule grid takes middle column */
 .schedule-grid {
   grid-column: 2;
-  grid-row: 1 / 3;
+  grid-row: 2;
   display: flex;
   gap: 8px;
   overflow-x: auto;
@@ -41,15 +48,15 @@
   border-bottom: 2px solid var(--border-light);
 }
 
-/* Playback controls row */
-.content-layout > div:has(.playback-controls-row) {
-  grid-column: 2;
-  grid-row: 3;
+/* Preview pane on right */
+.content-layout > .uploaded-content:last-child {
+  grid-column: 3;
+  grid-row: 2;
 }
 
-/* Preview pane */
-.content-layout > .uploaded-content:last-child {
-  grid-column: 1;
+/* Playback controls row at bottom */
+.content-layout > div:has(.playback-controls-row) {
+  grid-column: 1 / -1;
   grid-row: 3;
 }
 
@@ -197,6 +204,8 @@
   gap: 12px;
   flex-wrap: wrap;
   align-items: center;
+  color: black;
+  font-weight: bold;
 }
 
 .week-summary strong {
@@ -274,6 +283,7 @@
   border-bottom: 2px solid rgba(0,0,0,0.3);
   text-shadow: 1px 1px 0 rgba(0,0,0,0.5);
   animation: pulse 2s ease-in-out infinite;
+  flex-shrink: 0;
 }
 
 @keyframes pulse {
@@ -285,12 +295,14 @@
   flex: 1;
   font-size: 11px;
   color: black;
+  font-weight: bold;
 }
 
 .on-air-progress {
   font-size: 10px;
-  color: var(--border-dark);
+  color: black;
   margin-top: 4px;
+  font-weight: normal;
 }
 
 /* Playback controls */
@@ -362,9 +374,9 @@
 }
 
 /* Responsive layout */
-@media (max-width: 1400px) {
+@media (max-width: 1600px) {
   .content-layout {
-    grid-template-columns: 260px 1fr;
+    grid-template-columns: 260px 1fr 260px;
   }
 
   .schedule-day {
@@ -373,7 +385,7 @@
   }
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 1200px) {
   .content-layout {
     grid-template-columns: 1fr;
     grid-template-rows: auto;

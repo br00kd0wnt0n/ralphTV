@@ -20,18 +20,25 @@ export default function LibraryPanel({
       {(provided) => (
         <div className="uploaded-content" ref={provided.innerRef} {...provided.droppableProps}>
           <h3>Uploaded Content</h3>
-          <LibraryList
-            assets={assets}
-            categories={categories}
-            onChangeTags={(assetId, tags) => {
-              setAssets((prev) => prev.map((a) => (a.id === assetId ? { ...a, tags } : a)));
-              if (apiEnabled) updateAssetTags({ assetId, tags }).catch(() => {});
-            }}
-            onChangeCategory={(assetId, categoryId) => {
-              setAssets((prev) => prev.map((a) => (a.id === assetId ? { ...a, categoryId } : a)));
-              if (apiEnabled) setAssetCategory({ assetId, categoryId }).catch(() => {});
-            }}
-          />
+          <div>
+            {assets.length === 0 && (
+              <div style={{ padding: '12px 0', fontSize: 10, color: 'black', textAlign: 'center', fontStyle: 'italic' }}>
+                No assets yet. Upload files above to get started!
+              </div>
+            )}
+            <LibraryList
+              assets={assets}
+              categories={categories}
+              onChangeTags={(assetId, tags) => {
+                setAssets((prev) => prev.map((a) => (a.id === assetId ? { ...a, tags } : a)));
+                if (apiEnabled) updateAssetTags({ assetId, tags }).catch(() => {});
+              }}
+              onChangeCategory={(assetId, categoryId) => {
+                setAssets((prev) => prev.map((a) => (a.id === assetId ? { ...a, categoryId } : a)));
+                if (apiEnabled) setAssetCategory({ assetId, categoryId }).catch(() => {});
+              }}
+            />
+          </div>
           {provided.placeholder}
         </div>
       )}
