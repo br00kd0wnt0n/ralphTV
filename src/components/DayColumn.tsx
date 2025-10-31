@@ -11,6 +11,9 @@ export default function DayColumn({
   categories,
   compact,
   onSelect,
+  playbackMode,
+  playStart,
+  onPlaybackChange,
 }: {
   day: Day;
   items: ScheduledItem[];
@@ -19,6 +22,9 @@ export default function DayColumn({
   categories: Category[];
   compact?: boolean;
   onSelect?: (assetId: string) => void;
+  playbackMode?: 'loop' | 'playthru';
+  playStart?: string;
+  onPlaybackChange?: (mode: 'loop' | 'playthru', start?: string) => void;
 }) {
   const total = items.reduce((acc, it) => acc + (assetMap.get(it.assetId)?.durationSec || 0), 0);
   const unknown = items.filter(it => !assetMap.get(it.assetId)?.durationSec).length;
@@ -80,6 +86,28 @@ export default function DayColumn({
         );
       })}
       {provided.placeholder}
+
+      {/* Playback controls */}
+      <div className="day-playback-controls">
+        <label>Mode</label>
+        <select
+          value={playbackMode || 'loop'}
+          onChange={(e) => onPlaybackChange?.(e.target.value as 'loop' | 'playthru', playStart)}
+        >
+          <option value="loop">Loop</option>
+          <option value="playthru">Play Through</option>
+        </select>
+        {playbackMode === 'playthru' && (
+          <>
+            <label>Start</label>
+            <input
+              type="time"
+              value={playStart || ''}
+              onChange={(e) => onPlaybackChange?.('playthru', e.target.value)}
+            />
+          </>
+        )}
+      </div>
     </div>
   );
 }

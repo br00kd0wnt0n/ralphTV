@@ -16,10 +16,9 @@ import LibraryPanel from './LibraryPanel';
 import DayColumn from './DayColumn';
 import WeekSummary from './WeekSummary';
 import { useDurationBackfill } from '../hooks/useDurationBackfill';
-import PlaybackControlsRow from './PlaybackControlsRow';
-import PreviewPane from './PreviewPane';
 import OnAirTile from './OnAirTile';
 import StreamerControls from './StreamerControls';
+import PreviewPane from './PreviewPane';
 
 export default function ContentScheduler() {
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -229,14 +228,19 @@ export default function ContentScheduler() {
           <input type="checkbox" checked={compact} onChange={(e) => setCompact(e.target.checked)} />
         </div>
       </div>
-      <WeekSummary schedule={schedule} assetMap={assetMap} />
-      <StreamerControls />
-      <OnAirTile assetMap={assetMap} />
+      <div className="status-boxes-container">
+        <WeekSummary schedule={schedule} assetMap={assetMap} />
+        <StreamerControls />
+        <OnAirTile assetMap={assetMap} />
+      </div>
 
       <DragDropContext onDragEnd={onDragEnd}>
         <div className="content-layout">
           {/* Library */}
           <LibraryPanel assets={assets} categories={categories} setAssets={setAssets} />
+
+          {/* Categories panel */}
+          <CategoriesPanel categories={categories} onChange={setCategories} apiEnabled={!!CONFIG.API_BASE_URL} />
 
           {/* Schedule Grid */}
           <div className="schedule-grid">
@@ -251,26 +255,26 @@ export default function ContentScheduler() {
                     categories={categories}
                     compact={compact}
                     onSelect={(id) => setSelectedAssetId(id)}
+                    playbackMode={playback[day]?.mode}
+                    playStart={playback[day]?.start}
+                    onPlaybackChange={(mode, start) => {
+                      setPlayback(prev => ({ ...prev, [day]: { mode, start } }));
+                      saveDayToBackend(day, schedule[day]);
+                    }}
                   />
                 )}
               </Droppable>
             ))}
           </div>
-          <PlaybackControlsRow
-            values={playback}
-            onChange={(day, mode, start) => {
-              setPlayback(prev => ({ ...prev, [day]: { mode, start } }));
-              saveDayToBackend(day, schedule[day]);
-            }}
-          />
-          {/* Categories panel */}
-          <CategoriesPanel categories={categories} onChange={setCategories} apiEnabled={!!CONFIG.API_BASE_URL} />
-          {/* Preview panel */}
-          <div className="uploaded-content" style={{ minWidth: 260 }}>
-            <PreviewPane asset={selectedAssetId ? (assetMap.get(selectedAssetId) || null) : null} onClose={() => setSelectedAssetId(null)} />
-          </div>
         </div>
       </DragDropContext>
+
+      {/* Preview Modal */}
+      <PreviewPane
+        asset={selectedAssetId ? (assetMap.get(selectedAssetId) || null) : null}
+        onClose={() => setSelectedAssetId(null)}
+        categories={categories}
+      />
     </div>
   );
 }

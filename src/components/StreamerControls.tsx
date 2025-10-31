@@ -20,17 +20,19 @@ export default function StreamerControls() {
   useEffect(() => { refresh(); const t = setInterval(refresh, 10000); return () => clearInterval(t); }, []);
 
   return (
-    <div style={{ background: '#e3f2fd', border: '1px solid #90caf9', borderRadius: 8, padding: 10, margin: '10px 0' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <strong>Streamer</strong>
-        <span style={{ fontSize: 12, color: running ? '#2e7d32' : '#d32f2f' }}>{running ? 'Running' : 'Stopped'}</span>
-        <button onClick={async () => { await streamerStart(); refresh(); }} disabled={running}>Start</button>
-        <button onClick={async () => { await streamerStop(); refresh(); }} disabled={!running}>Stop</button>
-      </div>
+    <div className="streamer-controls">
+      <h3>
+        Streamer
+        <span className={`streamer-status-badge ${running ? 'running' : 'stopped'}`}>
+          {running ? 'Running' : 'Stopped'}
+        </span>
+      </h3>
+      <button className="win95-button" onClick={async () => { await streamerStart(); refresh(); }} disabled={running}>Start</button>
+      <button className="win95-button" onClick={async () => { await streamerStop(); refresh(); }} disabled={!running}>Stop</button>
       {current && (
-        <div style={{ fontSize: 12, marginTop: 6 }}>Index {current.index} — asset {current.assetId}</div>
+        <div style={{ fontSize: 10, width: '100%', color: 'black' }}>Index {current.index} — asset {current.assetId}</div>
       )}
-      {error && <div style={{ color: '#d32f2f', fontSize: 12 }}>{error}</div>}
+      {error && <div style={{ color: '#d32f2f', fontSize: 10, width: '100%' }}>{error}</div>}
     </div>
   );
 }

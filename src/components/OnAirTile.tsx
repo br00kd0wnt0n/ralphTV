@@ -35,11 +35,13 @@ export default function OnAirTile({ assetMap }: { assetMap: Map<string, Asset> }
   const remaining = dur > elapsed ? (dur - elapsed) : 0;
 
   return (
-    <div style={{ background: '#fff3e0', border: '1px solid #ffe0b2', borderRadius: 8, padding: 10, margin: '10px 0' }}>
-      <div style={{ fontWeight: 600 }}>On Air</div>
-      <div style={{ fontSize: 13 }}>{name}</div>
-      <div style={{ fontSize: 12, opacity: 0.8 }}>Elapsed {formatDuration(elapsed)} · Remaining {formatDuration(remaining)}</div>
-      {error && <div style={{ color: '#d32f2f', fontSize: 12 }}>{error}</div>}
+    <div className="on-air-tile">
+      <div className="on-air-badge">ON AIR</div>
+      <div className="on-air-info">
+        <div>{name}</div>
+        <div className="on-air-progress">Elapsed {formatDuration(elapsed)} · Remaining {formatDuration(remaining)}</div>
+      </div>
+      {error && <div style={{ color: '#d32f2f', fontSize: 10 }}>{error}</div>}
     </div>
   );
 }

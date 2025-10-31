@@ -14,7 +14,7 @@ export default function WeekSummary({
     DAYS.reduce((acc, d) => acc + schedule[d].reduce((s, it) => s + (assetMap.get(it.assetId)?.durationSec || 0), 0), 0)
   ), [schedule, assetMap]);
   return (
-    <div style={{ background: '#f4f4f4', borderRadius: 8, padding: 10, margin: '10px 0' }}>
+    <div className="week-summary">
       <strong>Week Total:</strong> {formatDuration(totalSec)}
     </div>
   );

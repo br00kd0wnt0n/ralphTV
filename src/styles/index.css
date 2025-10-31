@@ -156,6 +156,38 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--text-primary);
 }
 
+/* App header */
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: linear-gradient(90deg, var(--brand-pink) 0%, var(--brand-orange) 50%, var(--brand-yellow) 100%);
+  border-top: 2px solid var(--border-light);
+  border-left: 2px solid var(--border-light);
+  border-right: 2px solid var(--border-dark);
+  border-bottom: 2px solid var(--border-dark);
+  margin-bottom: 12px;
+}
+
+.app-logo {
+  height: 40px;
+  width: auto;
+  object-fit: contain;
+}
+
+.app-header h1 {
+  font-size: 18px;
+  color: white;
+  text-shadow: 2px 2px 0 rgba(0,0,0,0.5);
+  margin: 0;
+  text-align: right;
+  flex: 1;
+  border: none;
+  background: none;
+  padding: 0;
+}
+
 h1 {
   font-size: 18px;
   text-align: center;

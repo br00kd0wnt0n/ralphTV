@@ -4,7 +4,10 @@ import Protected from './auth/Protected';
 function App() {
   return (
     <div>
-      <h1 style={{textAlign: 'center'}}>ralphTV Content Scheduler (V1 wireframe)</h1>
+      <div className="app-header">
+        <img src="/logo.png" alt="Ralph" className="app-logo" />
+        <h1>CONTENT SCHEDULER</h1>
+      </div>
       <Protected>
         <ContentScheduler />
       </Protected>
