@@ -80,16 +80,47 @@ let CURRENT = null; // { assetId, index, startedAt, url }
 let SESSION_STARTED_AT = null;
 
 async function streamOnce(url, offsetSec) {
+  // Download remote to a local temp file for stable decoding
+  let localPath = url;
+  let downloaded = false;
+  if (/^https?:\/\//i.test(url)) {
+    try {
+      localPath = await downloadToTemp(url, 'single');
+      downloaded = true;
+    } catch (e) {
+      console.error('download failed, will try streaming direct', e);
+      localPath = url;
+    }
+  }
+
   return new Promise((resolve, reject) => {
-    const args = ffmpegArgs(url, offsetSec);
+    // Use -ss before -i for fast seek when local file
+    const [w, h] = CONFIG.RESOLUTION.split('x').map((n) => parseInt(n, 10));
+    const target = (process.env.STREAMER_FORCE_RTMPS === 'true')
+      ? (CONFIG.RTMP_TARGET || '').replace(/^rtmp:\/\//, 'rtmps://')
+      : (CONFIG.RTMP_TARGET || '');
+    const args = [
+      '-loglevel', 'info',
+      '-re',
+      ...(offsetSec > 0 ? ['-ss', String(Math.floor(offsetSec))] : []),
+      '-i', localPath,
+      '-c:v', 'libx264', '-preset', CONFIG.PRESET, '-profile:v', 'high', '-pix_fmt', 'yuv420p',
+      '-b:v', CONFIG.VIDEO_BITRATE, '-maxrate', CONFIG.VIDEO_BITRATE, '-bufsize', '10000k',
+      '-g', String(CONFIG.GOP), '-r', String(CONFIG.FPS),
+      '-vf', `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`,
+      '-c:a', 'aac', '-b:a', CONFIG.AUDIO_BITRATE, '-ar', '48000', '-ac', '2',
+      '-flvflags', 'no_duration_filesize', '-f', 'flv', '-rtmp_live', 'live', target,
+    ];
     console.log('ffmpeg', args.join(' '));
     CHILD = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
     CHILD.on('error', (err) => { console.error('ffmpeg spawn error', err); reject(err); });
     CHILD.stdout.on('data', (d) => process.stdout.write(d.toString()));
     CHILD.stderr.on('data', (d) => process.stderr.write(d.toString()));
-    CHILD.on('exit', (code, sig) => {
+    CHILD.on('exit', async (code, sig) => {
       const wasKilled = sig || code === null;
       CHILD = null;
+      if (downloaded) { try { await fs.unlink(localPath); } catch {}
+      }
       if (wasKilled) return resolve();
       if (code === 0) resolve(); else {
         console.error('ffmpeg exited with code', code);
