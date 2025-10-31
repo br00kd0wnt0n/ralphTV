@@ -27,7 +27,12 @@ export default function PreviewPane({
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest('.preview-header')) {
+    const target = e.target as HTMLElement;
+    // Don't start dragging if clicking on a button or interactive element
+    if (target.closest('button') || target.closest('input') || target.closest('select')) {
+      return;
+    }
+    if (target.closest('.preview-header')) {
       setDragging(true);
       setDragStart({
         x: e.clientX - position.x,
@@ -99,9 +104,20 @@ export default function PreviewPane({
       }}
       onMouseDown={handleMouseDown}
     >
-      <div className="preview-header" style={{ cursor: 'grab' }}>
+      <div className="preview-header" style={{ cursor: dragging ? 'grabbing' : 'grab' }}>
         <h4>Asset Preview</h4>
-        {asset && <button className="win95-button" onClick={onClose} style={{ padding: '2px 8px', minWidth: 50 }}>Close</button>}
+        {asset && (
+          <button
+            className="win95-button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
+            style={{ padding: '2px 8px', minWidth: 50, cursor: 'pointer' }}
+          >
+            Close
+          </button>
+        )}
       </div>
 
       <div ref={containerRef} className="preview-player" style={{ background: '#000', minHeight: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -133,7 +149,7 @@ export default function PreviewPane({
           {category && (
             <div className="metadata-row">
               <label>Category:</label>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flex: '0 0 auto' }}>
                 <span
                   style={{
                     width: 10,

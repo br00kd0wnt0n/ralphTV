@@ -59,9 +59,19 @@
   border-right: 2px solid var(--border-dark);
   border-bottom: 2px solid var(--border-dark);
   padding: 0;
+  margin-bottom: 12px;
+}
+
+/* Library panel - full width */
+.uploaded-content {
   width: 100%;
   max-width: 100%;
-  margin-bottom: 12px;
+}
+
+/* Categories panel - constrained width */
+.categories-panel {
+  width: auto;
+  max-width: 600px;
 }
 
 .uploaded-content h3,
@@ -87,6 +97,7 @@
   gap: 8px;
   align-items: flex-start;
   align-content: flex-start;
+  min-height: 100px;
 }
 
 .categories-panel > div {
