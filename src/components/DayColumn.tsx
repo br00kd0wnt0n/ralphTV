@@ -10,6 +10,7 @@ export default function DayColumn({
   assetMap,
   categories,
   onSelect,
+  onDelete,
   playbackMode,
   playStart,
   onPlaybackChange,
@@ -20,6 +21,7 @@ export default function DayColumn({
   assetMap: Map<string, Asset>;
   categories: Category[];
   onSelect?: (assetId: string) => void;
+  onDelete?: (itemId: string) => void;
   playbackMode?: 'loop' | 'playthru';
   playStart?: string;
   onPlaybackChange?: (mode: 'loop' | 'playthru', start?: string) => void;
@@ -57,11 +59,17 @@ export default function DayColumn({
                   ...(color ? { borderLeft: `6px solid ${color}` } : {}),
                   ...provided.draggableProps.style
                 }}
-                onClick={() => asset && onSelect?.(asset.id)}
+                onClick={(e) => {
+                  // Don't trigger select if clicking delete button
+                  if ((e.target as HTMLElement).closest('.delete-scheduled-item')) return;
+                  asset && onSelect?.(asset.id);
+                }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span>{asset?.name ?? 'Missing asset'}</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'relative' }}>
+                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>
+                    {asset?.name ?? 'Missing asset'}
+                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
                     {category && (
                       <span
                         style={{
@@ -77,6 +85,35 @@ export default function DayColumn({
                       />
                     )}
                     <span style={{ fontSize: 10, opacity: 0.7 }}>{asset?.durationSec ? formatDuration(asset.durationSec) : ''}</span>
+                    {onDelete && (
+                      <button
+                        className="delete-scheduled-item"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDelete(item.id);
+                        }}
+                        title="Remove from schedule"
+                        style={{
+                          background: 'var(--brand-pink)',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '2px',
+                          width: 16,
+                          height: 16,
+                          fontSize: 10,
+                          fontWeight: 'bold',
+                          cursor: 'pointer',
+                          padding: 0,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                          marginLeft: 4
+                        }}
+                      >
+                        ✕
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>

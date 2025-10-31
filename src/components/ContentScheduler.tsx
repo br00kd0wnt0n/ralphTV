@@ -162,6 +162,12 @@ export default function ContentScheduler() {
     }
   };
 
+  const handleDeleteFromSchedule = (day: Day, itemId: string) => {
+    const updatedItems = schedule[day].filter(item => item.id !== itemId);
+    setSchedule(prev => ({ ...prev, [day]: updatedItems }));
+    saveDayToBackend(day, updatedItems);
+  };
+
   const onDragEnd = (result: DropResult) => {
     const { source, destination, draggableId } = result;
     if (!destination) return;
@@ -249,6 +255,7 @@ export default function ContentScheduler() {
                     assetMap={assetMap}
                     categories={categories}
                     onSelect={(id) => setSelectedAssetId(id)}
+                    onDelete={(itemId) => handleDeleteFromSchedule(day, itemId)}
                     playbackMode={playback[day]?.mode}
                     playStart={playback[day]?.start}
                     onPlaybackChange={(mode, start) => {
