@@ -17,6 +17,7 @@ import WeekSummary from './WeekSummary';
 import { useDurationBackfill } from '../hooks/useDurationBackfill';
 import OnAirTile from './OnAirTile';
 import StreamerControls from './StreamerControls';
+import ScheduleDiagnostics from './ScheduleDiagnostics';
 import PreviewPane from './PreviewPane';
 import PlayheadIndicator from './PlayheadIndicator';
 
@@ -228,9 +229,10 @@ export default function ContentScheduler() {
     <div className="content-scheduler container">
       {/* Status Boxes under header */}
       <div className="status-boxes-container">
-        <WeekSummary schedule={schedule} assetMap={assetMap} />
-        <StreamerControls />
-        <OnAirTile assetMap={assetMap} />
+      <WeekSummary schedule={schedule} assetMap={assetMap} />
+      <StreamerControls />
+      <OnAirTile assetMap={assetMap} />
+      <ScheduleDiagnostics />
       </div>
 
       <DragDropContext onDragEnd={onDragEnd}>

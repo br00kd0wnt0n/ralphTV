@@ -78,6 +78,7 @@ let RUNNING = false;
 let CHILD = null;
 let CURRENT = null; // { assetId, index, startedAt, url }
 let SESSION_STARTED_AT = null;
+const NORMALIZE = (process.env.STREAMER_NORMALIZE === 'true');
 
 async function streamOnce(url, offsetSec) {
   // Download remote to a local temp file for stable decoding
@@ -147,12 +148,45 @@ async function downloadToTemp(url, ix) {
   return tmp;
 }
 
+async function normalizeToTemp(inPath, ix) {
+  const out = path.join(os.tmpdir(), `ralphtv_norm_${Date.now()}_${ix}.mp4`);
+  const [w, h] = CONFIG.RESOLUTION.split('x').map((n) => parseInt(n, 10));
+  const args = [
+    '-loglevel', 'info',
+    '-i', inPath,
+    '-c:v', 'libx264', '-preset', CONFIG.PRESET, '-profile:v', 'high', '-pix_fmt', 'yuv420p',
+    '-b:v', CONFIG.VIDEO_BITRATE, '-maxrate', CONFIG.VIDEO_BITRATE, '-bufsize', '10000k',
+    '-g', String(CONFIG.GOP), '-r', String(CONFIG.FPS),
+    '-vf', `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`,
+    '-c:a', 'aac', '-b:a', CONFIG.AUDIO_BITRATE, '-ar', '48000', '-ac', '2',
+    '-movflags', '+faststart', out,
+  ];
+  console.log('ffmpeg normalize', args.join(' '));
+  await new Promise((resolve, reject) => {
+    const p = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    p.on('error', reject);
+    p.stdout.on('data', (d) => process.stdout.write(d.toString()));
+    p.stderr.on('data', (d) => process.stderr.write(d.toString()));
+    p.on('exit', (code) => code === 0 ? resolve() : reject(new Error('normalize exit ' + code)));
+  });
+  return out;
+}
+
 async function streamBatch(urls) {
   // Build concat list
   const files = [];
+  const toCleanup = [];
   try {
     for (let i = 0; i < urls.length; i++) {
-      files.push(await downloadToTemp(urls[i], i));
+      const dl = await downloadToTemp(urls[i], i);
+      toCleanup.push(dl);
+      if (NORMALIZE) {
+        const nm = await normalizeToTemp(dl, `nm_${i}`);
+        files.push(nm);
+        toCleanup.push(nm);
+      } else {
+        files.push(dl);
+      }
     }
     const listPath = path.join(os.tmpdir(), `ralphtv_list_${Date.now()}.txt`);
     const listContent = files.map(f => `file '${f.replace(/'/g, "'\\''")}'`).join('\n');
@@ -181,7 +215,7 @@ async function streamBatch(urls) {
       CHILD.on('exit', (code, sig) => {
         CHILD = null;
         // Cleanup
-        Promise.allSettled(files.map(f => fs.unlink(f))).then(() => fs.unlink(listPath).catch(() => {}));
+        Promise.allSettled(toCleanup.map(f => fs.unlink(f))).then(() => fs.unlink(listPath).catch(() => {}));
         if (sig || code === null) return resolve();
         if (code === 0) resolve(); else {
           console.error('ffmpeg batch exited with code', code);
@@ -191,7 +225,7 @@ async function streamBatch(urls) {
     });
   } catch (e) {
     // Cleanup on failure
-    await Promise.allSettled(files.map(f => fs.unlink(f).catch(() => {})));
+    await Promise.allSettled(toCleanup.map(f => fs.unlink(f).catch(() => {})));
     throw e;
   }
 }
