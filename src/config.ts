@@ -6,4 +6,5 @@ export const CONFIG = {
   CHANNEL: import.meta.env.VITE_CHANNEL || 'default',
   WEEK: import.meta.env.VITE_WEEK || 'current',
   REALTIME_URL: import.meta.env.VITE_REALTIME_URL || '',
+  STREAMER_BASE_URL: import.meta.env.VITE_STREAMER_BASE_URL || '',
 };

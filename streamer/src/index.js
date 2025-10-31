@@ -63,14 +63,21 @@ function ffmpegArgs(inputUrl, offsetSec = 0) {
   return args;
 }
 
+let RUNNING = false;
+let CHILD = null;
+let CURRENT = null; // { assetId, index, startedAt, url }
+
 async function streamOnce(url, offsetSec) {
   return new Promise((resolve, reject) => {
     const args = ffmpegArgs(url, offsetSec);
     console.log('ffmpeg', args.join(' '));
-    const child = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
-    child.stdout.on('data', (d) => process.stdout.write(d.toString()));
-    child.stderr.on('data', (d) => process.stderr.write(d.toString()));
-    child.on('exit', (code) => {
+    CHILD = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    CHILD.stdout.on('data', (d) => process.stdout.write(d.toString()));
+    CHILD.stderr.on('data', (d) => process.stderr.write(d.toString()));
+    CHILD.on('exit', (code, sig) => {
+      const wasKilled = sig || code === null;
+      CHILD = null;
+      if (wasKilled) return resolve();
       if (code === 0) resolve(); else reject(new Error(`ffmpeg exited ${code}`));
     });
   });
@@ -84,14 +91,40 @@ async function main() {
 
   // Tiny HTTP server for Railway web mode
   const port = process.env.PORT || 3001;
-  const server = http.createServer((req, res) => {
+  const server = http.createServer(async (req, res) => {
+    // Basic CORS
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+
     if (req.url && (req.url === '/' || req.url.startsWith('/healthz'))) {
       res.writeHead(200, { 'Content-Type': 'text/plain' });
       res.end('ok');
-    } else {
-      res.writeHead(200, { 'Content-Type': 'text/plain' });
-      res.end('ralphTV streamer');
+      return;
     }
+    if (req.url === '/status') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ running: RUNNING, current: CURRENT }));
+      return;
+    }
+    if (req.url === '/control/start' && req.method === 'POST') {
+      RUNNING = true;
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+    if (req.url === '/control/stop' && req.method === 'POST') {
+      RUNNING = false;
+      if (CHILD) {
+        try { CHILD.kill('SIGINT'); } catch {}
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.end('not found');
   });
   server.listen(port, () => console.log(`Streamer health on :${port}`));
 
@@ -99,6 +132,7 @@ async function main() {
   // At start of each cycle, compute pointer and decide list
   for (;;) {
     try {
+      if (!RUNNING) { await sleep(1000); continue; }
       const pl = await playlist();
       const ptr = await now();
       const items = pl.items || [];
@@ -111,24 +145,30 @@ async function main() {
 
       // play from pointer to end
       for (let i = idx; i < items.length; i++) {
+        if (!RUNNING) break;
         const it = items[i];
         const url = it.url || (await presignedUrl(it.assetId));
+        CURRENT = { assetId: it.assetId, index: i, startedAt: Date.now(), url };
         await streamOnce(url, offset);
         offset = 0; // only first item uses offset
       }
 
       if (mode === 'playthru') {
         console.log('Play-through ended. Sleeping...');
+        CURRENT = null;
         await sleep(60000);
         continue;
       }
 
       // loop: continue from start
       for (let i = 0; i < idx; i++) {
+        if (!RUNNING) break;
         const it = items[i];
         const url = it.url || (await presignedUrl(it.assetId));
+        CURRENT = { assetId: it.assetId, index: i, startedAt: Date.now(), url };
         await streamOnce(url, 0);
       }
+      CURRENT = null;
     } catch (e) {
       console.error('Streamer error', e);
       await sleep(5000);

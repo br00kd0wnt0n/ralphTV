@@ -19,6 +19,7 @@ import { useDurationBackfill } from '../hooks/useDurationBackfill';
 import PlaybackControlsRow from './PlaybackControlsRow';
 import PreviewPane from './PreviewPane';
 import OnAirTile from './OnAirTile';
+import StreamerControls from './StreamerControls';
 
 export default function ContentScheduler() {
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -229,6 +230,7 @@ export default function ContentScheduler() {
         </div>
       </div>
       <WeekSummary schedule={schedule} assetMap={assetMap} />
+      <StreamerControls />
       <OnAirTile assetMap={assetMap} />
 
       <DragDropContext onDragEnd={onDragEnd}>
