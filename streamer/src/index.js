@@ -43,8 +43,10 @@ async function presignedUrl(assetId) {
 
 function ffmpegArgs(inputUrl, offsetSec = 0) {
   const [w, h] = CONFIG.RESOLUTION.split('x').map((n) => parseInt(n, 10));
-  // Prefer RTMPS for Restream; upgrade scheme if needed
-  const target = (CONFIG.RTMP_TARGET || '').replace(/^rtmp:\/\//, 'rtmps://');
+  // Use target as provided unless FORCE_RTMPS is true
+  const target = (process.env.STREAMER_FORCE_RTMPS === 'true')
+    ? (CONFIG.RTMP_TARGET || '').replace(/^rtmp:\/\//, 'rtmps://')
+    : (CONFIG.RTMP_TARGET || '');
   const args = [
     '-loglevel', 'info',
     '-re',
@@ -126,7 +128,9 @@ async function streamBatch(urls) {
     await fs.writeFile(listPath, listContent, 'utf8');
     return new Promise((resolve, reject) => {
       const [w, h] = CONFIG.RESOLUTION.split('x').map((n) => parseInt(n, 10));
-      const target = (CONFIG.RTMP_TARGET || '').replace(/^rtmp:\/\//, 'rtmps://');
+      const target = (process.env.STREAMER_FORCE_RTMPS === 'true')
+        ? (CONFIG.RTMP_TARGET || '').replace(/^rtmp:\/\//, 'rtmps://')
+        : (CONFIG.RTMP_TARGET || '');
       const args = [
         '-loglevel', 'info',
         '-re', '-f', 'concat', '-safe', '0', '-i', listPath,
@@ -164,7 +168,9 @@ async function streamBatch(urls) {
 async function streamTestSignal(seconds = 30) {
   return new Promise((resolve, reject) => {
     const [w, h] = CONFIG.RESOLUTION.split('x').map((n) => parseInt(n, 10));
-    const target = (CONFIG.RTMP_TARGET || '').replace(/^rtmp:\/\//, 'rtmps://');
+    const target = (process.env.STREAMER_FORCE_RTMPS === 'true')
+      ? (CONFIG.RTMP_TARGET || '').replace(/^rtmp:\/\//, 'rtmps://')
+      : (CONFIG.RTMP_TARGET || '');
     const args = [
       '-loglevel', 'info',
       '-re', '-f', 'lavfi', '-i', `testsrc=size=${w}x${h}:rate=${CONFIG.FPS}`,
