@@ -227,16 +227,16 @@ export default function ContentScheduler() {
         <OnAirTile assetMap={assetMap} />
       </div>
 
-      {/* Library - full width outside grid */}
-      <LibraryPanel
-        assets={assets}
-        categories={categories}
-        setAssets={setAssets}
-        onAssetUploaded={handleAssetUploaded}
-      />
-
       <DragDropContext onDragEnd={onDragEnd}>
-        {/* Schedule Grid - full width outside grid */}
+        {/* Library - full width */}
+        <LibraryPanel
+          assets={assets}
+          categories={categories}
+          setAssets={setAssets}
+          onAssetUploaded={handleAssetUploaded}
+        />
+
+        {/* Schedule Grid - full width */}
         <div className="schedule-grid" style={{ position: 'relative' }}>
             <PlayheadIndicator schedule={schedule} assetMap={assetMap} />
             {DAYS.map((day) => (
