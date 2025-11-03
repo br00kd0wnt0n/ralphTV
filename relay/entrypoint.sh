@@ -3,11 +3,20 @@ set -euo pipefail
 
 echo "==> Relay entrypoint starting..."
 
+# Set default ports if not provided
+RELAY_HTTP_PORT="${RELAY_HTTP_PORT:-8080}"
+RELAY_RTMP_PORT="${RELAY_RTMP_PORT:-1935}"
+
 # If running on platforms that provide PORT (e.g., Railway), map it to RELAY_HTTP_PORT
 if [ -n "${PORT:-}" ]; then
-  export RELAY_HTTP_PORT="$PORT"
+  RELAY_HTTP_PORT="$PORT"
   echo "==> Using PORT from environment: RELAY_HTTP_PORT=$RELAY_HTTP_PORT"
 fi
+
+# Export for envsubst
+export RELAY_HTTP_PORT
+export RELAY_RTMP_PORT
+export NGINX_WORKER_PROCESSES="${NGINX_WORKER_PROCESSES:-auto}"
 
 # Generate push lines from RELAY_PUSH_1..RELAY_PUSH_5
 PUSH_LINES=""
@@ -34,8 +43,8 @@ done
 export RELAY_PUSH_LINES="$PUSH_LINES"
 
 # Generate JSON files for API endpoints
-echo "==> Creating /tmp/api directory..."
-mkdir -p /tmp/api
+echo "==> Creating directories..."
+mkdir -p /tmp/api /tmp/hls
 
 if [ -n "$PUSH_JSON_ARRAY" ]; then
   echo "{\"destinations\":[$PUSH_JSON_ARRAY]}" > /tmp/api/destinations.json
@@ -49,7 +58,12 @@ fi
 echo '{"streaming":false}' > /tmp/api/status.json
 
 echo "==> Generating nginx config..."
+echo "==> RELAY_HTTP_PORT=${RELAY_HTTP_PORT}"
+echo "==> RELAY_RTMP_PORT=${RELAY_RTMP_PORT}"
 envsubst < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
+
+echo "==> Testing nginx config..."
+nginx -t
 
 echo "==> Starting stream monitor in background..."
 /monitor-stream.sh &
