@@ -3,6 +3,12 @@ set -euo pipefail
 
 echo "==> Relay entrypoint starting..."
 
+# If running on platforms that provide PORT (e.g., Railway), map it to RELAY_HTTP_PORT
+if [ -n "${PORT:-}" ]; then
+  export RELAY_HTTP_PORT="$PORT"
+  echo "==> Using PORT from environment: RELAY_HTTP_PORT=$RELAY_HTTP_PORT"
+fi
+
 # Generate push lines from RELAY_PUSH_1..RELAY_PUSH_5
 PUSH_LINES=""
 PUSH_JSON_ARRAY=""
@@ -50,4 +56,3 @@ echo "==> Starting stream monitor in background..."
 
 echo "==> Starting nginx..."
 exec "$@"
-
