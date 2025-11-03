@@ -527,6 +527,32 @@ app.post('/admin/normalize/backfill', authMiddleware, async (req, res) => {
   }
 });
 
+// Admin: re-normalize ALL assets (even if already normalized)
+app.post('/admin/normalize/reprocess', authMiddleware, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`select id from assets where file_type = 'video' order by uploaded_at desc`);
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      for (const r of rows) {
+        // Delete existing job if any, then create new one
+        await client.query(`delete from normalize_jobs where asset_id=$1`, [r.id]);
+        await client.query(`insert into normalize_jobs (asset_id, status) values ($1,'pending')`, [r.id]);
+        await client.query(`update assets set norm_status='pending' where id=$1`, [r.id]);
+      }
+      await client.query('commit');
+    } catch (e) {
+      await client.query('rollback');
+      throw e;
+    } finally { client.release(); }
+    console.log(`==> Enqueued ${rows.length} assets for re-normalization`);
+    return res.json({ enqueued: rows.length, message: 'All video assets enqueued for re-normalization' });
+  } catch (e) {
+    console.error('reprocess normalize error', e);
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // Debug: Check normalization status
 app.get('/debug/normalized', authMiddleware, async (_req, res) => {
   try {
