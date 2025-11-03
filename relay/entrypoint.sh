@@ -8,9 +8,12 @@ RELAY_HTTP_PORT="${RELAY_HTTP_PORT:-8080}"
 RELAY_RTMP_PORT="${RELAY_RTMP_PORT:-1935}"
 
 # If running on platforms that provide PORT (e.g., Railway), map it to RELAY_HTTP_PORT
-if [ -n "${PORT:-}" ]; then
+# BUT: ignore if PORT=1935 (that's the RTMP port from TCP proxy, not HTTP)
+if [ -n "${PORT:-}" ] && [ "${PORT}" != "1935" ]; then
   RELAY_HTTP_PORT="$PORT"
   echo "==> Using PORT from environment: RELAY_HTTP_PORT=$RELAY_HTTP_PORT"
+else
+  echo "==> Using default RELAY_HTTP_PORT=$RELAY_HTTP_PORT (PORT=${PORT:-not set})"
 fi
 
 # Export for envsubst
