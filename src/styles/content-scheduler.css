@@ -328,6 +328,13 @@
   flex-shrink: 0;
 }
 
+.on-air-badge.off-air {
+  background: var(--border-dark);
+  color: #ccc;
+  animation: none;
+  text-shadow: none;
+}
+
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.7; }

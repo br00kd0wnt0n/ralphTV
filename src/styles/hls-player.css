@@ -1,0 +1,111 @@
+/* HLS Player Styles - Windows 95 Edition */
+
+.hls-player-container {
+  background: var(--win95-face);
+  border-top: 2px solid var(--border-light);
+  border-left: 2px solid var(--border-light);
+  border-right: 2px solid var(--border-dark);
+  border-bottom: 2px solid var(--border-dark);
+  padding: 0;
+  margin-bottom: 10px;
+  max-width: 640px;
+}
+
+.hls-player-header {
+  background: linear-gradient(90deg, var(--brand-teal) 0%, var(--brand-pink) 100%);
+  color: white;
+  padding: 4px 6px;
+  margin: 0;
+  font-size: 11px;
+  font-weight: bold;
+  text-shadow: 1px 1px 0 rgba(0,0,0,0.3);
+}
+
+.hls-player-header h4 {
+  margin: 0;
+  font-size: 11px;
+  color: white;
+}
+
+.hls-player-video {
+  position: relative;
+  background: #000;
+  border-top: 2px solid var(--border-dark);
+  border-left: 2px solid var(--border-dark);
+  border-right: 2px solid var(--border-light);
+  border-bottom: 2px solid var(--border-light);
+  margin: 8px;
+}
+
+.hls-player-video video {
+  width: 100%;
+  height: auto;
+  display: block;
+  max-height: 360px;
+}
+
+.hls-player-status {
+  padding: 8px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  font-size: 10px;
+  font-weight: bold;
+  border-top: 2px solid rgba(255,255,255,0.3);
+  border-left: 2px solid rgba(255,255,255,0.3);
+  border-right: 2px solid rgba(0,0,0,0.3);
+  border-bottom: 2px solid rgba(0,0,0,0.3);
+}
+
+.status-badge.loading {
+  background: var(--brand-orange);
+  color: white;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.status-badge.error {
+  background: #d32f2f;
+  color: white;
+}
+
+.hls-player-controls {
+  padding: 8px;
+  background: var(--bg-secondary);
+  border-top: 2px solid var(--border-dark);
+  border-left: 2px solid var(--border-dark);
+  border-right: 2px solid var(--border-light);
+  border-bottom: 2px solid var(--border-light);
+  margin: 8px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.hls-player-controls .win95-button {
+  flex-shrink: 0;
+}
+
+.stream-url-info {
+  flex: 1;
+  font-size: 9px;
+  color: black;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .hls-player-container {
+    max-width: 100%;
+  }
+
+  .hls-player-video video {
+    max-height: 240px;
+  }
+}

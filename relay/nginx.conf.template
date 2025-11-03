@@ -51,6 +51,20 @@ http {
       expires -1;
     }
 
+    location /api/destinations {
+      default_type application/json;
+      alias /tmp/api/destinations.json;
+      add_header Cache-Control no-cache;
+      add_header Access-Control-Allow-Origin *;
+    }
+
+    location /api/status {
+      default_type application/json;
+      alias /tmp/api/status.json;
+      add_header Cache-Control no-cache;
+      add_header Access-Control-Allow-Origin *;
+    }
+
     location /healthz { return 200 'ok'; }
   }
 }

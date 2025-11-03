@@ -7,4 +7,5 @@ export const CONFIG = {
   WEEK: import.meta.env.VITE_WEEK || 'current',
   REALTIME_URL: import.meta.env.VITE_REALTIME_URL || '',
   STREAMER_BASE_URL: import.meta.env.VITE_STREAMER_BASE_URL || '',
+  RELAY_BASE_URL: import.meta.env.VITE_RELAY_BASE_URL || '',
 };

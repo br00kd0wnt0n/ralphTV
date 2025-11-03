@@ -7,7 +7,8 @@ RUN apt-get update && \
 
 COPY nginx.conf.template /etc/nginx/nginx.conf.template
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+COPY monitor-stream.sh /monitor-stream.sh
+RUN chmod +x /entrypoint.sh /monitor-stream.sh
 
 ENV NGINX_WORKER_PROCESSES=auto \
     RELAY_HTTP_PORT=8080 \

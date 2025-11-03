@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult } from 'react-beautiful-dnd';
 import '../styles/content-scheduler.css';
+import '../styles/hls-player.css';
 import type { Day, Asset, ScheduledItem, Category } from '../state/models';
 import { DAYS } from '../state/models';
 import { reorder, makeId, isDay, formatDuration, durationToHeightPx } from '../state/schedule';
@@ -20,6 +21,7 @@ import StreamerControls from './StreamerControls';
 import ScheduleDiagnostics from './ScheduleDiagnostics';
 import PreviewPane from './PreviewPane';
 import PlayheadIndicator from './PlayheadIndicator';
+import HlsPlayer from './HlsPlayer';
 
 export default function ContentScheduler() {
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -230,10 +232,13 @@ export default function ContentScheduler() {
       {/* Status Boxes under header */}
       <div className="status-boxes-container">
       <WeekSummary schedule={schedule} assetMap={assetMap} />
-      <StreamerControls />
+      <StreamerControls assetMap={assetMap} />
       <OnAirTile assetMap={assetMap} />
       <ScheduleDiagnostics />
       </div>
+
+      {/* HLS Stream Preview */}
+      {CONFIG.RELAY_BASE_URL && <HlsPlayer />}
 
       <DragDropContext onDragEnd={onDragEnd}>
         <div className="content-layout">

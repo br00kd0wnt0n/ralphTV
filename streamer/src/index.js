@@ -54,6 +54,7 @@ function ffmpegArgs(inputUrl, offsetSec = 0) {
   const target = (process.env.STREAMER_FORCE_RTMPS === 'true')
     ? (CONFIG.RTMP_TARGET || '').replace(/^rtmp:\/\//, 'rtmps://')
     : (CONFIG.RTMP_TARGET || '');
+  const tuneGop = (process.env.STREAMER_TUNE_GOP === 'true');
   const args = [
     '-loglevel', 'info',
     '-re',
@@ -67,6 +68,7 @@ function ffmpegArgs(inputUrl, offsetSec = 0) {
     '-maxrate', CONFIG.VIDEO_BITRATE,
     '-bufsize', '10000k',
     '-g', String(CONFIG.GOP),
+    ...(tuneGop ? ['-keyint_min', String(CONFIG.GOP), '-sc_threshold', '0', '-force_key_frames', 'expr:gte(t,n_forced*2)'] : []),
     '-r', String(CONFIG.FPS),
     '-vf', `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`,
     '-c:a', 'aac',
@@ -132,7 +134,7 @@ async function streamOnce(url, offsetSec) {
       '-i', (normalizedPath || localPath),
       '-c:v', 'libx264', '-preset', CONFIG.PRESET, '-profile:v', 'high', '-pix_fmt', 'yuv420p',
       '-b:v', CONFIG.VIDEO_BITRATE, '-maxrate', CONFIG.VIDEO_BITRATE, '-bufsize', '10000k',
-      '-g', String(CONFIG.GOP), '-r', String(CONFIG.FPS),
+      '-g', String(CONFIG.GOP), '-keyint_min', String(CONFIG.GOP), '-sc_threshold', '0', '-force_key_frames', 'expr:gte(t,n_forced*2)', '-r', String(CONFIG.FPS),
       '-vf', `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`,
       '-c:a', 'aac', '-b:a', CONFIG.AUDIO_BITRATE, '-ar', '48000', '-ac', '2',
       '-flvflags', 'no_duration_filesize', '-f', 'flv', '-rtmp_live', 'live', target,
@@ -228,7 +230,7 @@ async function streamBatch(urls) {
         '-c:v', 'libx264', '-preset', CONFIG.PRESET, '-profile:v', 'high',
         '-pix_fmt', 'yuv420p',
         '-b:v', CONFIG.VIDEO_BITRATE, '-maxrate', CONFIG.VIDEO_BITRATE, '-bufsize', '10000k',
-        '-g', String(CONFIG.GOP), '-r', String(CONFIG.FPS),
+        '-g', String(CONFIG.GOP), '-keyint_min', String(CONFIG.GOP), '-sc_threshold', '0', '-force_key_frames', 'expr:gte(t,n_forced*2)', '-r', String(CONFIG.FPS),
         '-vf', `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`,
         '-c:a', 'aac', '-b:a', CONFIG.AUDIO_BITRATE, '-ar', '48000', '-ac', '2',
         '-flvflags', 'no_duration_filesize', '-f', 'flv', '-rtmp_live', 'live', target,
@@ -269,7 +271,7 @@ async function streamTestSignal(seconds = 30) {
       '-t', String(Math.max(5, seconds)),
       '-c:v', 'libx264', '-preset', CONFIG.PRESET, '-profile:v', 'high', '-pix_fmt', 'yuv420p',
       '-b:v', CONFIG.VIDEO_BITRATE, '-maxrate', CONFIG.VIDEO_BITRATE, '-bufsize', '10000k',
-      '-g', String(CONFIG.GOP), '-r', String(CONFIG.FPS),
+      '-g', String(CONFIG.GOP), '-keyint_min', String(CONFIG.GOP), '-sc_threshold', '0', '-force_key_frames', 'expr:gte(t,n_forced*2)', '-r', String(CONFIG.FPS),
       '-vf', `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`,
       '-c:a', 'aac', '-b:a', CONFIG.AUDIO_BITRATE, '-ar', '48000', '-ac', '2',
       '-flvflags', 'no_duration_filesize', '-f', 'flv', '-rtmp_live', 'live', target,
@@ -324,7 +326,7 @@ async function streamSlate(seconds) {
     '-t', String(Math.max(1, seconds)),
     '-c:v', 'libx264', '-preset', CONFIG.PRESET, '-profile:v', 'high', '-pix_fmt', 'yuv420p',
     '-b:v', CONFIG.VIDEO_BITRATE, '-maxrate', CONFIG.VIDEO_BITRATE, '-bufsize', '10000k',
-    '-g', String(CONFIG.GOP), '-r', String(CONFIG.FPS),
+    '-g', String(CONFIG.GOP), ...(process.env.STREAMER_TUNE_GOP === 'true' ? ['-keyint_min', String(CONFIG.GOP), '-sc_threshold', '0', '-force_key_frames', 'expr:gte(t,n_forced*2)'] : []), '-r', String(CONFIG.FPS),
     '-vf', `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`,
     '-c:a', 'aac', '-b:a', CONFIG.AUDIO_BITRATE, '-ar', '48000', '-ac', '2',
     '-flvflags', 'no_duration_filesize', '-f', 'flv', '-rtmp_live', 'live', target,
@@ -388,7 +390,12 @@ async function streamContinuous(items) {
     '-re', '-f', 'concat', '-safe', '0', '-i', listPath,
     '-c:v', 'libx264', '-preset', CONFIG.PRESET, '-profile:v', 'high', '-pix_fmt', 'yuv420p',
     '-b:v', CONFIG.VIDEO_BITRATE, '-maxrate', CONFIG.VIDEO_BITRATE, '-bufsize', '10000k',
-    '-g', String(CONFIG.GOP), '-r', String(CONFIG.FPS),
+    // Exact 2-second keyframes for HLS segmentation
+    '-g', String(CONFIG.GOP),
+    '-keyint_min', String(CONFIG.GOP),
+    '-sc_threshold', '0',
+    '-force_key_frames', 'expr:gte(t,n_forced*2)',
+    '-r', String(CONFIG.FPS),
     '-vf', `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`,
     '-c:a', 'aac', '-b:a', CONFIG.AUDIO_BITRATE, '-ar', '48000', '-ac', '2',
     '-flvflags', 'no_duration_filesize', '-f', 'flv', '-rtmp_live', 'live', target,

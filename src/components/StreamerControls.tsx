@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { streamerStatus, streamerStart, streamerStop, streamerRestart, streamerTestSignal } from '../api/streamer';
 import { formatDuration } from '../state/schedule';
+import type { Asset } from '../state/models';
 
-export default function StreamerControls() {
+export default function StreamerControls({ assetMap }: { assetMap: Map<string, Asset> }) {
   const [running, setRunning] = useState<boolean>(false);
   const [current, setCurrent] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
@@ -23,6 +24,12 @@ export default function StreamerControls() {
 
   const [sessionSec, setSessionSec] = useState<number>(0);
 
+  const assetName = useMemo(() => {
+    if (!current?.assetId) return null;
+    const asset = assetMap.get(current.assetId);
+    return asset?.name || current.assetId;
+  }, [current, assetMap]);
+
   return (
     <div className="streamer-controls">
       <h3>
@@ -35,11 +42,13 @@ export default function StreamerControls() {
       <button className="win95-button" onClick={async () => { await streamerStop(); refresh(); }} disabled={!running}>Stop</button>
       <button className="win95-button" onClick={async () => { await streamerRestart(); setTimeout(refresh, 1200); }}>Restart</button>
       <button className="win95-button" onClick={async () => { await streamerTestSignal(30); refresh(); }}>Test Signal (30s)</button>
-      {running && (
-        <div style={{ fontSize: 10, width: '100%', color: 'black' }}>Session {formatDuration(sessionSec)}</div>
+      {running && current && (
+        <div style={{ fontSize: 10, width: '100%', color: 'black', marginTop: 4 }}>
+          Session {formatDuration(sessionSec)} · #{current.index}: {assetName}
+        </div>
       )}
-      {current && (
-        <div style={{ fontSize: 10, width: '100%', color: 'black' }}>Index {current.index} — asset {current.assetId}</div>
+      {running && !current && (
+        <div style={{ fontSize: 10, width: '100%', color: 'black', marginTop: 4 }}>Session {formatDuration(sessionSec)}</div>
       )}
       {error && <div style={{ color: '#d32f2f', fontSize: 10, width: '100%' }}>{error}</div>}
     </div>
