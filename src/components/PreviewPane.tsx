@@ -54,15 +54,6 @@ export default function PreviewPane({
     <div className="asset-preview-panel">
       <div className="preview-header">
         <h4>Asset Preview</h4>
-        {asset && (
-          <button
-            className="win95-button"
-            onClick={onClose}
-            style={{ padding: '2px 8px', minWidth: 50, cursor: 'pointer' }}
-          >
-            Close
-          </button>
-        )}
       </div>
 
       <div ref={containerRef} className="preview-player" style={{ background: '#000', minHeight: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

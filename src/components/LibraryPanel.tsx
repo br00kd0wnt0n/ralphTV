@@ -124,31 +124,46 @@ export default function LibraryPanel({
     <Droppable droppableId="library">
       {(provided) => (
         <div className="uploaded-content" ref={provided.innerRef} {...provided.droppableProps}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-            <h3>Uploaded Content</h3>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <label style={{ fontSize: 10, color: 'white' }}>Filter:</label>
-              <select
-                value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
-                style={{ fontSize: 10, padding: '2px 4px' }}
-              >
-                <option value="all">All ({assets.length})</option>
-                <option value="uncategorized">Uncategorized ({assets.filter(a => !a.categoryId).length})</option>
-                {categories.map(cat => (
-                  <option key={cat.id} value={cat.id}>
-                    {cat.name} ({assets.filter(a => a.categoryId === cat.id).length})
-                  </option>
-                ))}
-              </select>
+          <h3 style={{ marginBottom: 10 }}>Uploaded Content</h3>
+          <div style={{ display: 'flex', gap: 12 }}>
+            {/* Left sidebar with controls */}
+            <div style={{
+              minWidth: 150,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
+              padding: 10,
+              background: 'var(--bg-secondary)',
+              borderRadius: 4
+            }}>
               <button
                 className="win95-button"
                 onClick={() => fileInputRef.current?.click()}
-                style={{ fontSize: 10, padding: '2px 8px' }}
+                style={{ fontSize: 11, padding: '6px 12px', width: '100%' }}
               >
                 Upload Files
               </button>
+
+              <div style={{ borderTop: '1px solid #444', paddingTop: 10 }}>
+                <label style={{ fontSize: 10, color: '#ccc', display: 'block', marginBottom: 6 }}>
+                  FILTER BY CATEGORY
+                </label>
+                <select
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                  style={{ fontSize: 10, padding: '4px', width: '100%' }}
+                >
+                  <option value="all">All ({assets.length})</option>
+                  <option value="uncategorized">Uncategorized ({assets.filter(a => !a.categoryId).length})</option>
+                  {categories.map(cat => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.name} ({assets.filter(a => a.categoryId === cat.id).length})
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
+
             <input
               ref={fileInputRef}
               type="file"
@@ -157,8 +172,9 @@ export default function LibraryPanel({
               onChange={handleFiles}
               style={{ display: 'none' }}
             />
-          </div>
-          <div style={{ padding: 10 }}>
+
+            {/* Main content area */}
+            <div style={{ flex: 1, padding: 10 }}>
             {activeUploads.length > 0 && (
               <div style={{ padding: 10, background: 'var(--bg-secondary)', marginBottom: 10, borderRadius: 4 }}>
                 {activeUploads.map(it => (
@@ -194,6 +210,7 @@ export default function LibraryPanel({
                   if (apiEnabled) setAssetCategory({ assetId, categoryId }).catch(() => {});
                 }}
               />
+            </div>
             </div>
           </div>
           {provided.placeholder}

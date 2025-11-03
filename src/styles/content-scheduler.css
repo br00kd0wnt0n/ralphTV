@@ -54,10 +54,10 @@
   margin-bottom: 0;
 }
 
-/* Library panel - full width */
+/* Library panel - narrower width */
 .uploaded-content {
-  width: 100%;
-  max-width: 100%;
+  width: auto;
+  max-width: 800px;
 }
 
 /* Categories panel - constrained width */
