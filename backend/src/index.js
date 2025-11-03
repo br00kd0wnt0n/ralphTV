@@ -156,10 +156,16 @@ app.post('/uploads/complete', authMiddleware, async (req, res) => {
     if (fileName && mimeType && typeof size === 'number' && s3Key) {
       const fileType = mimeType.startsWith('video/') ? 'video' : mimeType.startsWith('audio/') ? 'audio' : 'unknown';
       await pool.query(
-        `insert into assets (id, file_name, mime_type, size, s3_key, file_type, duration_sec)
-         values ($1,$2,$3,$4,$5,$6,$7)
+        `insert into assets (id, file_name, mime_type, size, s3_key, file_type, duration_sec, norm_status)
+         values ($1,$2,$3,$4,$5,$6,$7,'pending')
          on conflict (id) do update set duration_sec = coalesce(excluded.duration_sec, assets.duration_sec)`,
         [fileId, fileName, mimeType, size, s3Key, fileType, (typeof durationSec === 'number' ? durationSec : null)]
+      );
+      // enqueue normalization job
+      await pool.query(
+        `insert into normalize_jobs (asset_id, status) values ($1,'pending')
+         on conflict do nothing`,
+        [fileId]
       );
     }
 
@@ -459,17 +465,18 @@ app.get('/feed/:channel/:week/:day/playlist', authMiddleware, async (req, res) =
       if (!sched.rows.length) return res.json({ playbackMode: 'loop', playStart: '00:00', items: [] });
       const row = sched.rows[0];
       const items = await client.query(`
-        select si.position, a.id as asset_id, a.vimeo_reference, a.duration_sec, a.s3_key
+        select si.position, a.id as asset_id, a.vimeo_reference, a.duration_sec, a.s3_key, a.s3_key_norm, a.norm_status
         from schedule_items si
         join assets a on a.id = si.asset_id
         where si.schedule_id=$1
         order by si.position asc
       `, [row.id]);
-      const base = items.rows.map(r => ({ assetId: r.asset_id, vimeoId: r.vimeo_reference, durationSec: r.duration_sec || 0, s3Key: r.s3_key }));
+      const base = items.rows.map(r => ({ assetId: r.asset_id, vimeoId: r.vimeo_reference, durationSec: r.duration_sec || 0, s3Key: r.s3_key, s3KeyNorm: r.s3_key_norm, normStatus: r.norm_status }));
       if (withUrls && hasS3) {
         const enriched = await Promise.all(base.map(async (it) => {
           try {
-            const cmd = new GetObjectCommand({ Bucket: process.env.S3_BUCKET_UPLOADS, Key: it.s3Key });
+            const key = it.s3KeyNorm && it.normStatus === 'ready' ? it.s3KeyNorm : it.s3Key;
+            const cmd = new GetObjectCommand({ Bucket: process.env.S3_BUCKET_UPLOADS, Key: key });
             const url = await getSignedUrl(s3, cmd, { expiresIn: (parseInt(process.env.PRESIGN_TTL_MINUTES || '10', 10)) * 60 });
             return { assetId: it.assetId, vimeoId: it.vimeoId, durationSec: it.durationSec, url };
           } catch {
@@ -478,10 +485,33 @@ app.get('/feed/:channel/:week/:day/playlist', authMiddleware, async (req, res) =
         }));
         return res.json({ playbackMode: row.playback_mode || 'loop', playStart: row.play_start || '00:00', items: enriched });
       }
-      return res.json({ playbackMode: row.playback_mode || 'loop', playStart: row.play_start || '00:00', items: base.map(({ s3Key, ...rest }) => rest) });
+      return res.json({ playbackMode: row.playback_mode || 'loop', playStart: row.play_start || '00:00', items: base.map(({ s3Key, s3KeyNorm, normStatus, ...rest }) => rest) });
     } finally { client.release(); }
   } catch (e) {
     console.error('feed playlist error', e);
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Admin: enqueue backfill normalization for existing assets
+app.post('/admin/normalize/backfill', authMiddleware, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`select id from assets where coalesce(s3_key_norm,'')=''`);
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      for (const r of rows) {
+        await client.query(`insert into normalize_jobs (asset_id, status) values ($1,'pending') on conflict do nothing`, [r.id]);
+        await client.query(`update assets set norm_status='pending' where id=$1`, [r.id]);
+      }
+      await client.query('commit');
+    } catch (e) {
+      await client.query('rollback');
+      throw e;
+    } finally { client.release(); }
+    return res.json({ enqueued: rows.length });
+  } catch (e) {
+    console.error('backfill normalize error', e);
     return res.status(500).json({ message: 'Server error' });
   }
 });
