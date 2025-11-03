@@ -438,6 +438,8 @@ app.get('/assets/:id/url', authMiddleware, async (req, res) => {
     const useNormalized = rows[0].s3_key_norm && rows[0].norm_status === 'ready';
     const key = useNormalized ? rows[0].s3_key_norm : rows[0].s3_key;
 
+    console.log(`==> Asset ${id} URL request: norm_status=${rows[0].norm_status}, s3_key_norm=${rows[0].s3_key_norm ? 'set' : 'null'}, useNormalized=${useNormalized}`);
+
     const cmd = new GetObjectCommand({ Bucket: process.env.S3_BUCKET_UPLOADS, Key: key });
     const url = await getSignedUrl(s3, cmd, { expiresIn: (parseInt(process.env.PRESIGN_TTL_MINUTES || '10', 10)) * 60 });
     return res.json({ url, normalized: useNormalized });

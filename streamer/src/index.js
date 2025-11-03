@@ -361,6 +361,7 @@ async function buildContinuousList(items) {
       u = items[i].url;
     } else {
       const info = await getAssetInfo(items[i].assetId);
+      console.log(`==> Asset ${items[i].assetId}: normalized=${info.normalized}`);
       u = info.url;
       isNorm = info.normalized;
     }
