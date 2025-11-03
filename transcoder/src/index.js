@@ -105,11 +105,19 @@ async function doneJob(jobId) {
 
 async function loop() {
   console.log('==> Worker loop starting, polling for jobs...');
+  let pollCount = 0;
   while (true) {
     try {
+      pollCount++;
+      if (pollCount % 10 === 1) {
+        console.log(`==> Poll #${pollCount}: Checking for pending jobs...`);
+      }
       const job = await nextJob();
       if (!job) {
         // No job found, wait and retry
+        if (pollCount === 1) {
+          console.log('==> No jobs found on first poll. Waiting for jobs...');
+        }
         await new Promise(r => setTimeout(r, 2000));
         continue;
       }
@@ -131,8 +139,10 @@ async function loop() {
       console.log(`==> Job ${job.id} completed successfully!`);
       try { await fs.unlink(src); } catch {}
       try { await fs.unlink(out); } catch {}
+      pollCount = 0; // Reset after successful job
     } catch (e) {
-      console.error('transcoder error', e);
+      console.error('==> Transcoder error:', e.message);
+      console.error('==> Full error:', e);
       await new Promise(r => setTimeout(r, 2000));
     }
   }
