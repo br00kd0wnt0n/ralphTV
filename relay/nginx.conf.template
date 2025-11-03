@@ -21,8 +21,8 @@ rtmp {
       # HLS output for local HTTP serving
       hls on;
       hls_path /tmp/hls;
-      hls_fragment 2s;
-      hls_playlist_length 10s;
+      hls_fragment 1s;
+      hls_playlist_length 5s;
       hls_cleanup on;
     }
   }

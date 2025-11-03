@@ -8,12 +8,12 @@ export const CONFIG = {
   CHANNEL: env('CHANNEL', 'default'),
   WEEK: env('WEEK', 'current'),
   RTMP_TARGET: env('RTMP_TARGET', ''),
-  VIDEO_BITRATE: env('VIDEO_BITRATE', '4500k'),
+  VIDEO_BITRATE: env('VIDEO_BITRATE', '2500k'),
   AUDIO_BITRATE: env('AUDIO_BITRATE', '160k'),
-  FPS: parseInt(env('FPS', '30'), 10),
-  GOP: parseInt(env('GOP', '60'), 10),
-  RESOLUTION: env('RESOLUTION', '1920x1080'),
-  PRESET: env('PRESET', 'veryfast'),
+  FPS: parseInt(env('FPS', '24'), 10),
+  GOP: parseInt(env('GOP', '24'), 10), // 1 second GOP for short videos
+  RESOLUTION: env('RESOLUTION', '1280x720'),
+  PRESET: env('PRESET', 'ultrafast'),
 };
 
 if (!CONFIG.RTMP_TARGET) {

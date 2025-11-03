@@ -18,7 +18,7 @@ const BUCKET = process.env.S3_BUCKET_UPLOADS;
 const TARGET_W = parseInt(process.env.TARGET_WIDTH || '1280', 10);
 const TARGET_H = parseInt(process.env.TARGET_HEIGHT || '720', 10);
 const FPS = parseInt(process.env.FPS || '24', 10);
-const GOP = parseInt(process.env.GOP || String(FPS * 2), 10);
+const GOP = parseInt(process.env.GOP || String(FPS), 10); // 1 second GOP for short videos
 const VBIT = process.env.VIDEO_BITRATE || '2500k';
 const ABIT = process.env.AUDIO_BITRATE || '160k';
 const PRESET = process.env.PRESET || 'ultrafast';
@@ -64,11 +64,11 @@ async function normalize(inPath) {
     '-i', inPath,
     '-c:v', 'libx264', '-preset', PRESET, '-profile:v', 'high', '-pix_fmt', 'yuv420p',
     '-b:v', VBIT, '-maxrate', VBIT, '-bufsize', '10000k',
-    // Exact 2-second keyframes for HLS segmentation
+    // Exact 1-second keyframes for HLS segmentation (works with short videos)
     '-g', String(GOP),
     '-keyint_min', String(GOP),
     '-sc_threshold', '0',
-    '-force_key_frames', 'expr:gte(t,n_forced*2)',
+    '-force_key_frames', 'expr:gte(t,n_forced*1)',
     '-r', String(FPS),
     '-vf', `scale=${TARGET_W}:${TARGET_H}:force_original_aspect_ratio=decrease,pad=${TARGET_W}:${TARGET_H}:(ow-iw)/2:(oh-ih)/2:color=black`,
     '-c:a', 'aac', '-b:a', ABIT, '-ar', '48000', '-ac', '2',
