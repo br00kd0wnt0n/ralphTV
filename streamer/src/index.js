@@ -352,7 +352,7 @@ async function buildContinuousList(items) {
       nm = await normalizeToTemp(dl, `cont_norm_${i}`);
       toCleanup.push(nm);
     }
-    normItems.push({ path: nm, durationSec: Math.max(1, Math.floor(items[i].durationSec || 0)) });
+    normItems.push({ path: nm });
   }
   const slate = await ensureSlateLocal();
   const listPath = path.join(os.tmpdir(), `ralphtv_cont_${Date.now()}.txt`);
@@ -361,18 +361,15 @@ async function buildContinuousList(items) {
   for (let loop = 0; loop < Math.max(1, CONTINUOUS_LOOPS); loop++) {
     for (let i = 0; i < normItems.length; i++) {
       const it = normItems[i];
-      // Specify duration for item to keep cadence (optional)
-      if (it.durationSec) lines.push(`duration ${it.durationSec}`);
+      // Just list files; avoid duration directive ordering pitfalls
       lines.push(`file '${it.path.replace(/'/g, "'\\''")}'`);
       // Insert slate between items
       if (SLATE_BETWEEN_SEC > 0 && slate) {
-        lines.push(`duration ${SLATE_BETWEEN_SEC}`);
         lines.push(`file '${slate.replace(/'/g, "'\\''")}'`);
       }
     }
     // End-of-loop slate to hide reconnect if process ends here
     if (slate && SLATE_IDLE_SEC > 0) {
-      lines.push(`duration ${SLATE_IDLE_SEC}`);
       lines.push(`file '${slate.replace(/'/g, "'\\''")}'`);
     }
   }
@@ -405,7 +402,10 @@ async function streamContinuous(items) {
     CHILD.on('exit', (code) => {
       CHILD = null;
       Promise.allSettled(toCleanup.map(f => fs.unlink(f))).then(() => fs.unlink(listPath).catch(() => {}));
-      if (code === 0) resolve(); else reject(new Error('continuous exit ' + code));
+      if (code === 0) resolve(); else {
+        console.error('ffmpeg continuous exited with code', code);
+        reject(new Error('continuous exit ' + code));
+      }
     });
   });
 }
@@ -542,8 +542,13 @@ async function main() {
           await streamContinuous(items);
         } catch (e) {
           console.error('continuous mode error', e);
-          // show slate briefly and retry
-          try { await streamSlate(Math.min(10, SLATE_IDLE_SEC)); } catch {}
+          // Fallback: sequential normalized per item with slate between
+          for (let i = 0; i < items.length; i++) {
+            if (!RUNNING) break;
+            const u = items[i].url || (await presignedUrl(items[i].assetId));
+            try { await streamOnce(u, 0); } catch (err) { console.error('sequential fallback item failed', err); }
+            if (SLATE_BETWEEN_SEC > 0) { try { await streamSlate(SLATE_BETWEEN_SEC); } catch {} }
+          }
         }
         continue;
       }
