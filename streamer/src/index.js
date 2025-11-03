@@ -385,8 +385,12 @@ async function buildContinuousList(items) {
   const slate = await ensureSlateLocal();
   const listPath = path.join(os.tmpdir(), `ralphtv_cont_${Date.now()}.txt`);
   let lines = [];
-  // Build N loops
-  for (let loop = 0; loop < Math.max(1, CONTINUOUS_LOOPS); loop++) {
+
+  // For copy mode, use many loops to maintain continuous stream for hours
+  // For encode mode, use configured loops to avoid excessive processing
+  const loopCount = allNormalized ? 1000 : Math.max(1, CONTINUOUS_LOOPS);
+
+  for (let loop = 0; loop < loopCount; loop++) {
     for (let i = 0; i < normItems.length; i++) {
       const it = normItems[i];
       lines.push(`file '${it.path.replace(/'/g, "'\\''")}'`);
@@ -399,7 +403,7 @@ async function buildContinuousList(items) {
     }
   }
   await fs.writeFile(listPath, lines.join('\n'), 'utf8');
-  console.log(`==> Continuous list built: ${normItems.length} items, allNormalized=${allNormalized}`);
+  console.log(`==> Continuous list built: ${normItems.length} items, ${loopCount} loops, allNormalized=${allNormalized}`);
   return { listPath, toCleanup, allNormalized };
 }
 
@@ -415,7 +419,6 @@ async function streamContinuous(items) {
     console.log('==> Using COPY MODE (all assets pre-normalized)');
     args = [
       '-loglevel', 'info',
-      '-stream_loop', '-1', // Infinite loop to maintain continuous RTMP connection
       '-re', '-f', 'concat', '-safe', '0', '-i', listPath,
       '-c:v', 'copy',
       '-c:a', 'copy',
@@ -427,7 +430,6 @@ async function streamContinuous(items) {
     const [w, h] = CONFIG.RESOLUTION.split('x').map((n) => parseInt(n, 10));
     args = [
       '-loglevel', 'info',
-      '-stream_loop', '-1', // Infinite loop to maintain continuous RTMP connection
       '-re', '-f', 'concat', '-safe', '0', '-i', listPath,
       '-c:v', 'libx264', '-preset', CONFIG.PRESET, '-profile:v', 'high', '-pix_fmt', 'yuv420p',
       '-b:v', CONFIG.VIDEO_BITRATE, '-maxrate', CONFIG.VIDEO_BITRATE, '-bufsize', '10000k',
