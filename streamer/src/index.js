@@ -359,9 +359,11 @@ async function buildContinuousList(items) {
     let u, isNorm = false;
     if (items[i].url) {
       u = items[i].url;
+      isNorm = items[i].normalized || false;
+      console.log(`==> Asset ${items[i].assetId}: normalized=${isNorm} (from playlist)`);
     } else {
       const info = await getAssetInfo(items[i].assetId);
-      console.log(`==> Asset ${items[i].assetId}: normalized=${info.normalized}`);
+      console.log(`==> Asset ${items[i].assetId}: normalized=${info.normalized} (from API)`);
       u = info.url;
       isNorm = info.normalized;
     }

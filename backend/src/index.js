@@ -484,10 +484,12 @@ app.get('/feed/:channel/:week/:day/playlist', authMiddleware, async (req, res) =
       if (withUrls && hasS3) {
         const enriched = await Promise.all(base.map(async (it) => {
           try {
-            const key = it.s3KeyNorm && it.normStatus === 'ready' ? it.s3KeyNorm : it.s3Key;
+            const useNormalized = it.s3KeyNorm && it.normStatus === 'ready';
+            const key = useNormalized ? it.s3KeyNorm : it.s3Key;
             const cmd = new GetObjectCommand({ Bucket: process.env.S3_BUCKET_UPLOADS, Key: key });
             const url = await getSignedUrl(s3, cmd, { expiresIn: (parseInt(process.env.PRESIGN_TTL_MINUTES || '10', 10)) * 60 });
-            return { assetId: it.assetId, vimeoId: it.vimeoId, durationSec: it.durationSec, url };
+            console.log(`==> Playlist item assetId=${it.assetId}: normStatus=${it.normStatus}, s3KeyNorm=${it.s3KeyNorm ? 'set' : 'null'}, useNormalized=${useNormalized}`);
+            return { assetId: it.assetId, vimeoId: it.vimeoId, durationSec: it.durationSec, url, normalized: useNormalized };
           } catch {
             return { assetId: it.assetId, vimeoId: it.vimeoId, durationSec: it.durationSec };
           }
