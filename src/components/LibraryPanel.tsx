@@ -122,8 +122,15 @@ export default function LibraryPanel({
 
   return (
     <Droppable droppableId="library">
-      {(provided) => (
-        <div className="uploaded-content" ref={provided.innerRef} {...provided.droppableProps}>
+      {(provided, snapshot) => (
+        <div
+          className="uploaded-content"
+          ref={provided.innerRef}
+          {...provided.droppableProps}
+          style={{
+            minHeight: snapshot.isDraggingOver ? '200px' : 'auto'
+          }}
+        >
           <h3 style={{ marginBottom: 10 }}>Library</h3>
           <div style={{ display: 'flex', gap: 12 }}>
             {/* Left sidebar with controls */}
@@ -174,7 +181,7 @@ export default function LibraryPanel({
             />
 
             {/* Main content area */}
-            <div style={{ flex: 1, padding: 10, minHeight: 320, maxHeight: 320, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ flex: 1, padding: 10, display: 'flex', flexDirection: 'column' }}>
             {activeUploads.length > 0 && (
               <div style={{ padding: 10, background: 'var(--bg-secondary)', marginBottom: 10, borderRadius: 4 }}>
                 {activeUploads.map(it => (
