@@ -84,7 +84,10 @@
   gap: 10px;
   align-items: flex-start;
   align-content: flex-start;
-  min-height: 100px;
+  min-height: 250px;
+  max-height: 320px;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .categories-panel > div {
