@@ -652,6 +652,36 @@ app.get('/api/relay/healthz', async (req, res) => {
   }
 });
 
+// Debug endpoint to check ON AIR status
+app.get('/api/debug/on-air', async (req, res) => {
+  const checks = {
+    relayConfigured: !!RELAY_URL,
+    relayUrl: RELAY_URL || 'Not configured',
+    timestamp: new Date().toISOString()
+  };
+
+  // Check relay status
+  if (RELAY_URL) {
+    try {
+      const statusRes = await fetch(`${RELAY_URL}/api/status`, { timeout: 3000 });
+      const statusData = await statusRes.json();
+      checks.relayStatus = statusData;
+    } catch (e) {
+      checks.relayStatus = { error: e.message };
+    }
+
+    try {
+      const destRes = await fetch(`${RELAY_URL}/api/destinations`, { timeout: 3000 });
+      const destData = await destRes.json();
+      checks.relayDestinations = destData;
+    } catch (e) {
+      checks.relayDestinations = { error: e.message };
+    }
+  }
+
+  res.json(checks);
+});
+
 // HTTP server + WebSocket
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
