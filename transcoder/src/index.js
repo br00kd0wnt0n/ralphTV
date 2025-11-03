@@ -6,6 +6,12 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
+console.log('==> Transcoder starting...');
+console.log('==> DATABASE_URL:', process.env.DATABASE_URL ? 'set' : 'MISSING');
+console.log('==> AWS_REGION:', process.env.AWS_REGION || 'MISSING');
+console.log('==> S3_BUCKET_UPLOADS:', process.env.S3_BUCKET_UPLOADS || 'MISSING');
+console.log('==> AWS_ACCESS_KEY_ID:', process.env.AWS_ACCESS_KEY_ID ? 'set' : 'MISSING');
+
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
 const s3 = new S3Client({ region: process.env.AWS_REGION });
 const BUCKET = process.env.S3_BUCKET_UPLOADS;
@@ -16,6 +22,8 @@ const GOP = parseInt(process.env.GOP || String(FPS * 2), 10);
 const VBIT = process.env.VIDEO_BITRATE || '2500k';
 const ABIT = process.env.AUDIO_BITRATE || '160k';
 const PRESET = process.env.PRESET || 'ultrafast';
+
+console.log('==> Config: Resolution:', `${TARGET_W}x${TARGET_H}`, 'FPS:', FPS, 'GOP:', GOP, 'Bitrate:', VBIT, 'Preset:', PRESET);
 
 async function nextJob() {
   const { rows } = await pool.query(`
@@ -96,18 +104,31 @@ async function doneJob(jobId) {
 }
 
 async function loop() {
+  console.log('==> Worker loop starting, polling for jobs...');
   while (true) {
     try {
       const job = await nextJob();
-      if (!job) { await new Promise(r => setTimeout(r, 2000)); continue; }
+      if (!job) {
+        // No job found, wait and retry
+        await new Promise(r => setTimeout(r, 2000));
+        continue;
+      }
+      console.log(`==> Processing job ${job.id} for asset ${job.asset_id} (attempt ${job.attempts})`);
       const asset = await getAsset(job.asset_id);
-      if (!asset || !asset.s3_key) { await doneJob(job.id); continue; }
-      // mark asset processing
+      if (!asset || !asset.s3_key) {
+        console.log(`==> Asset ${job.asset_id} not found or missing s3_key, marking job done`);
+        await doneJob(job.id);
+        continue;
+      }
+      console.log(`==> Downloading ${asset.s3_key}...`);
       await pool.query('update assets set norm_status=$2 where id=$1', [job.asset_id, 'processing']);
       const src = await downloadToTmp(asset.s3_key);
+      console.log(`==> Normalizing to ${TARGET_W}x${TARGET_H} @ ${FPS}fps...`);
       const out = await normalize(src);
+      console.log(`==> Uploading normalized file...`);
       await uploadNorm(job.asset_id, out);
       await doneJob(job.id);
+      console.log(`==> Job ${job.id} completed successfully!`);
       try { await fs.unlink(src); } catch {}
       try { await fs.unlink(out); } catch {}
     } catch (e) {
@@ -117,5 +138,6 @@ async function loop() {
   }
 }
 
+console.log('==> Starting worker loop...');
 loop();
 
