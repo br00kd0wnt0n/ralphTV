@@ -35,9 +35,16 @@ http {
     listen ${RELAY_HTTP_PORT};
     server_name _;
 
-    # CORS for HLS
+    # Global CORS headers (applied to all responses including errors)
     add_header Access-Control-Allow-Origin "*" always;
-    add_header Access-Control-Expose-Headers "Content-Length,Content-Range" always;
+    add_header Access-Control-Allow-Methods "GET, HEAD, OPTIONS" always;
+    add_header Access-Control-Allow-Headers "Origin, X-Requested-With, Content-Type, Accept, Range" always;
+    add_header Access-Control-Expose-Headers "Content-Length, Content-Range" always;
+
+    # Handle OPTIONS preflight requests
+    if ($request_method = 'OPTIONS') {
+      return 204;
+    }
 
     location /hls/ {
       types {
@@ -45,27 +52,26 @@ http {
         video/mp2t ts;
       }
       root /tmp;
-      add_header Cache-Control no-cache;
-      add_header Access-Control-Allow-Origin *;
-      add_header Access-Control-Allow-Headers *;
+      add_header Cache-Control "no-cache" always;
       expires -1;
     }
 
     location /api/destinations {
       default_type application/json;
       alias /tmp/api/destinations.json;
-      add_header Cache-Control no-cache;
-      add_header Access-Control-Allow-Origin *;
+      add_header Cache-Control "no-cache" always;
     }
 
     location /api/status {
       default_type application/json;
       alias /tmp/api/status.json;
-      add_header Cache-Control no-cache;
-      add_header Access-Control-Allow-Origin *;
+      add_header Cache-Control "no-cache" always;
     }
 
-    location /healthz { return 200 'ok'; }
+    location /healthz {
+      add_header Content-Type text/plain;
+      return 200 'ok';
+    }
   }
 }
 
