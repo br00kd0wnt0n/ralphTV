@@ -81,3 +81,13 @@ export async function setAssetDuration(assetId: string, durationSec: number) {
   if (!res.ok) throw new Error(`setAssetDuration failed: ${res.status}`);
   return res.json();
 }
+
+export async function updateAssetName(params: { assetId: string; name: string }) {
+  const res = await fetch(`${CONFIG.API_BASE_URL}/assets/${encodeURIComponent(params.assetId)}/name`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ name: params.name }),
+  });
+  if (!res.ok) throw new Error(`updateAssetName failed: ${res.status}`);
+  return res.json();
+}

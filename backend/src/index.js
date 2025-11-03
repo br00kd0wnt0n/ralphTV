@@ -463,6 +463,20 @@ app.post('/assets/:id/duration', authMiddleware, async (req, res) => {
   }
 });
 
+// Update asset name
+app.post('/assets/:id/name', authMiddleware, async (req, res) => {
+  const id = req.params.id;
+  const { name } = req.body || {};
+  if (typeof name !== 'string' || !name.trim()) return res.status(400).json({ message: 'Invalid name' });
+  try {
+    await pool.query('update assets set file_name=$2 where id=$1', [id, name.trim()]);
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error('asset name update error', e);
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // Feed endpoints
 app.get('/feed/:channel/:week/:day/playlist', authMiddleware, async (req, res) => {
   const { channel, week, day } = req.params;

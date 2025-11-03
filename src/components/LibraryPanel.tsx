@@ -2,7 +2,7 @@ import React, { useRef, useState, useMemo } from 'react';
 import { Droppable } from 'react-beautiful-dnd';
 import type { Asset, Category } from '../state/models';
 import LibraryList from './LibraryList';
-import { updateAssetTags, setAssetCategory } from '../api/assets';
+import { updateAssetTags, setAssetCategory, updateAssetName } from '../api/assets';
 import { CONFIG } from '../config';
 import { initUpload, putSingle, completeUpload, uploadMultipart, uploadMultipartWithSigner, getPartUrl } from '../api/upload';
 import { probeDuration } from '../utils/media';
@@ -124,7 +124,7 @@ export default function LibraryPanel({
     <Droppable droppableId="library">
       {(provided) => (
         <div className="uploaded-content" ref={provided.innerRef} {...provided.droppableProps}>
-          <h3 style={{ marginBottom: 10 }}>Uploaded Content</h3>
+          <h3 style={{ marginBottom: 10 }}>Library</h3>
           <div style={{ display: 'flex', gap: 12 }}>
             {/* Left sidebar with controls */}
             <div style={{
@@ -174,7 +174,7 @@ export default function LibraryPanel({
             />
 
             {/* Main content area */}
-            <div style={{ flex: 1, padding: 10 }}>
+            <div style={{ flex: 1, padding: 10, minHeight: 320, maxHeight: 320, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
             {activeUploads.length > 0 && (
               <div style={{ padding: 10, background: 'var(--bg-secondary)', marginBottom: 10, borderRadius: 4 }}>
                 {activeUploads.map(it => (
@@ -208,6 +208,10 @@ export default function LibraryPanel({
                 onChangeCategory={(assetId, categoryId) => {
                   setAssets((prev) => prev.map((a) => (a.id === assetId ? { ...a, categoryId } : a)));
                   if (apiEnabled) setAssetCategory({ assetId, categoryId }).catch(() => {});
+                }}
+                onChangeName={(assetId, name) => {
+                  setAssets((prev) => prev.map((a) => (a.id === assetId ? { ...a, name } : a)));
+                  if (apiEnabled) updateAssetName({ assetId, name }).catch(() => {});
                 }}
               />
             </div>

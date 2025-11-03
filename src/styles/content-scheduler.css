@@ -54,10 +54,12 @@
   margin-bottom: 0;
 }
 
-/* Library panel - narrower width */
+/* Library panel - full width with fixed height */
 .uploaded-content {
-  width: auto;
-  max-width: 800px;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  min-height: 380px;
 }
 
 /* Categories panel - constrained width */
@@ -146,11 +148,12 @@
 
 /* Scheduled items in day columns */
 .scheduled-item {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
   margin: 3px 0;
   position: relative;
+  line-height: 1.3;
 }
 
 /* Delete button - hidden by default, shown on hover */
