@@ -40,7 +40,6 @@
 .content-layout > .categories-panel {
   grid-column: 1;
   grid-row: 3;
-  max-width: 100%;
 }
 
 /* Library and Categories panels */
@@ -222,9 +221,10 @@
 /* Status boxes container */
 .status-boxes-container {
   display: flex;
-  gap: 12px;
-  margin-bottom: 12px;
-  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 10px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
 }
 
 /* Week summary */
@@ -237,13 +237,14 @@
   padding: 6px 8px;
   font-size: 11px;
   display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
+  gap: 8px;
+  flex-wrap: nowrap;
   align-items: center;
   color: black;
   font-weight: bold;
   flex: 0 0 auto;
-  min-width: 200px;
+  min-width: 180px;
+  white-space: nowrap;
 }
 
 .week-summary strong {
@@ -259,11 +260,11 @@
   border-bottom: 2px solid var(--border-dark);
   padding: 8px;
   display: flex;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   flex: 0 0 auto;
-  min-width: 300px;
+  min-width: 250px;
 }
 
 .streamer-controls h3 {
@@ -305,11 +306,11 @@
   border-bottom: 2px solid var(--border-dark);
   padding: 8px;
   display: flex;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
-  flex: 0 1 auto;
-  min-width: 300px;
-  max-width: 500px;
+  flex: 0 0 auto;
+  min-width: 250px;
+  max-width: 400px;
 }
 
 .on-air-badge {
@@ -527,9 +528,12 @@
     grid-row: auto !important;
   }
 
-  .uploaded-content,
-  .categories-panel {
+  .uploaded-content {
     max-width: 100%;
+  }
+
+  .categories-panel {
+    max-width: 600px;
   }
 
   .schedule-grid {
