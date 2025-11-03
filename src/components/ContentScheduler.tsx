@@ -234,7 +234,6 @@ export default function ContentScheduler() {
       <WeekSummary schedule={schedule} assetMap={assetMap} />
       <StreamerControls assetMap={assetMap} />
       <OnAirTile assetMap={assetMap} />
-      <ScheduleDiagnostics />
       </div>
 
       {/* Preview Panel Container - HLS Player and Asset Preview side by side */}

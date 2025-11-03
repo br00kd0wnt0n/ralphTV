@@ -50,25 +50,31 @@ export default function PreviewPane({
 
   const category = categories?.find(c => c.id === asset?.categoryId);
 
-  if (!asset) return null;
-
   return (
     <div className="asset-preview-panel">
       <div className="preview-header">
         <h4>Asset Preview</h4>
-        <button
-          className="win95-button"
-          onClick={onClose}
-          style={{ padding: '2px 8px', minWidth: 50, cursor: 'pointer' }}
-        >
-          Close
-        </button>
+        {asset && (
+          <button
+            className="win95-button"
+            onClick={onClose}
+            style={{ padding: '2px 8px', minWidth: 50, cursor: 'pointer' }}
+          >
+            Close
+          </button>
+        )}
       </div>
 
       <div ref={containerRef} className="preview-player" style={{ background: '#000', minHeight: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {!asset && (
+          <div style={{ color: '#888', fontSize: 14 }}>
+            Select an asset to preview
+          </div>
+        )}
       </div>
 
-      <div className="preview-metadata">
+      {asset && (
+        <div className="preview-metadata">
           <div className="metadata-row">
             <label>Name:</label>
             <span>{asset.name}</span>
@@ -131,6 +137,7 @@ export default function PreviewPane({
             </div>
           )}
         </div>
+      )}
     </div>
   );
 }
