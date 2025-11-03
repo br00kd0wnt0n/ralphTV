@@ -60,10 +60,18 @@ echo '{"streaming":false}' > /tmp/api/status.json
 echo "==> Generating nginx config..."
 echo "==> RELAY_HTTP_PORT=${RELAY_HTTP_PORT}"
 echo "==> RELAY_RTMP_PORT=${RELAY_RTMP_PORT}"
+echo "==> NGINX_WORKER_PROCESSES=${NGINX_WORKER_PROCESSES}"
 envsubst < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
 
+echo "==> Generated config:"
+cat /etc/nginx/nginx.conf
+
 echo "==> Testing nginx config..."
-nginx -t
+nginx -t 2>&1 || {
+  echo "ERROR: nginx config test failed"
+  cat /etc/nginx/nginx.conf
+  exit 1
+}
 
 echo "==> Starting stream monitor in background..."
 /monitor-stream.sh &
