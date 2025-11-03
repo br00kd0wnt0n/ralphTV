@@ -60,13 +60,17 @@ export default function OnAirTile({ assetMap }: { assetMap: Map<string, Asset> }
           getRelayDestinations()
         ]);
         if (!cancelled) {
-          setRelayStreaming(!!statusRes.streaming);
+          // Only update if relay is available, otherwise keep current state
+          if (statusRes.available !== false) {
+            setRelayStreaming(!!statusRes.streaming);
+          }
           if (destRes.destinations) {
             setDestinations(destRes.destinations);
           }
         }
       } catch (e) {
-        console.warn('Failed to load relay info:', e);
+        // Suppress errors - relay may be unavailable
+        console.log('Relay info unavailable');
         if (!cancelled) setRelayStreaming(false);
       }
     };

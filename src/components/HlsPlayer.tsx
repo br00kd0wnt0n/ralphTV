@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Hls from 'hls.js';
 import { CONFIG } from '../config';
-import { getRelayStatus } from '../api/relay';
+import { getRelayStatus, checkRelayHealth } from '../api/relay';
 
 export default function HlsPlayer() {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -9,18 +9,43 @@ export default function HlsPlayer() {
   const [error, setError] = useState<string | null>(null);
   const [streaming, setStreaming] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [relayAvailable, setRelayAvailable] = useState(true);
   const checkIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Check relay health on mount
+  useEffect(() => {
+    if (!CONFIG.RELAY_BASE_URL) {
+      setRelayAvailable(false);
+      return;
+    }
+
+    const checkHealth = async () => {
+      const health = await checkRelayHealth();
+      setRelayAvailable(health.available);
+      if (!health.available) {
+        console.log('Relay service unavailable:', health.error);
+      }
+    };
+
+    checkHealth();
+  }, []);
 
   // Check relay status periodically
   useEffect(() => {
-    if (!CONFIG.RELAY_BASE_URL) {
-      setError('No relay URL configured');
+    if (!CONFIG.RELAY_BASE_URL || !relayAvailable) {
       return;
     }
 
     const checkStatus = async () => {
       try {
         const status = await getRelayStatus();
+        if (!status.available) {
+          // Relay is down, mark as unavailable
+          setRelayAvailable(false);
+          setStreaming(false);
+          setError(null); // Suppress error display
+          return;
+        }
         setStreaming(status.streaming);
         if (!status.streaming && isPlaying) {
           // Stream stopped, pause video
@@ -44,11 +69,11 @@ export default function HlsPlayer() {
         clearInterval(checkIntervalRef.current);
       }
     };
-  }, [isPlaying]);
+  }, [isPlaying, relayAvailable]);
 
   // Load and play stream when streaming becomes active
   useEffect(() => {
-    if (!CONFIG.RELAY_BASE_URL || !streaming) {
+    if (!CONFIG.RELAY_BASE_URL || !streaming || !relayAvailable) {
       // Clean up existing HLS instance if stream stopped
       if (hlsRef.current) {
         hlsRef.current.destroy();
@@ -79,6 +104,7 @@ export default function HlsPlayer() {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
               console.log('Network error - retrying...');
+              // Don't show error UI, just retry silently
               setTimeout(() => hls.startLoad(), 3000);
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
@@ -86,7 +112,8 @@ export default function HlsPlayer() {
               hls.recoverMediaError();
               break;
             default:
-              setError('Fatal error - cannot play stream');
+              // Only show error for non-recoverable issues
+              console.error('Fatal HLS error');
               hls.destroy();
               break;
           }
@@ -125,12 +152,17 @@ export default function HlsPlayer() {
         });
       });
       video.addEventListener('error', () => {
-        setError('Error loading stream');
+        console.warn('Native HLS playback error');
       });
     } else {
-      setError('HLS not supported in this browser');
+      console.warn('HLS not supported in this browser');
     }
-  }, [streaming]);
+  }, [streaming, relayAvailable]);
+
+  // Don't show player if relay is not available (suppress UI errors)
+  if (!relayAvailable) {
+    return null;
+  }
 
   return (
     <div className="hls-player-container">

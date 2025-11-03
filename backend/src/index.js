@@ -605,6 +605,53 @@ app.get('/status/:channel/:week/:day', authMiddleware, async (req, res) => {
   }
 });
 
+// Relay proxy endpoints (to avoid CORS issues)
+const RELAY_URL = process.env.RELAY_URL || '';
+
+app.get('/api/relay/status', async (req, res) => {
+  if (!RELAY_URL) {
+    return res.json({ streaming: false, available: false });
+  }
+  try {
+    const response = await fetch(`${RELAY_URL}/api/status`, { timeout: 3000 });
+    if (!response.ok) throw new Error(`Relay status: ${response.status}`);
+    const data = await response.json();
+    res.json({ ...data, available: true });
+  } catch (e) {
+    console.warn('Relay status check failed:', e.message);
+    res.json({ streaming: false, available: false });
+  }
+});
+
+app.get('/api/relay/destinations', async (req, res) => {
+  if (!RELAY_URL) {
+    return res.json({ destinations: [] });
+  }
+  try {
+    const response = await fetch(`${RELAY_URL}/api/destinations`, { timeout: 3000 });
+    if (!response.ok) throw new Error(`Relay destinations: ${response.status}`);
+    const data = await response.json();
+    res.json(data);
+  } catch (e) {
+    console.warn('Relay destinations check failed:', e.message);
+    res.json({ destinations: [] });
+  }
+});
+
+app.get('/api/relay/healthz', async (req, res) => {
+  if (!RELAY_URL) {
+    return res.json({ available: false, error: 'RELAY_URL not configured' });
+  }
+  try {
+    const response = await fetch(`${RELAY_URL}/healthz`, { timeout: 3000 });
+    if (!response.ok) throw new Error(`Relay health: ${response.status}`);
+    res.json({ available: true, url: RELAY_URL });
+  } catch (e) {
+    console.warn('Relay health check failed:', e.message);
+    res.json({ available: false, error: e.message });
+  }
+});
+
 // HTTP server + WebSocket
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });

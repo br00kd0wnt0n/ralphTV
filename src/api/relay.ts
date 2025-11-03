@@ -1,11 +1,12 @@
 import { CONFIG } from '../config';
 
-const base = () => (CONFIG.RELAY_BASE_URL || '').replace(/\/$/, '');
+// Use backend proxy to avoid CORS issues
+const backendBase = () => (CONFIG.API_BASE_URL || '').replace(/\/$/, '');
 
 export async function getRelayDestinations() {
-  if (!base()) return { destinations: [] };
+  if (!backendBase()) return { destinations: [] };
   try {
-    const url = `${base()}/api/destinations`;
+    const url = `${backendBase()}/api/relay/destinations`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`relay destinations failed: ${res.status}`);
     return res.json();
@@ -16,14 +17,27 @@ export async function getRelayDestinations() {
 }
 
 export async function getRelayStatus() {
-  if (!base()) return { streaming: false };
+  if (!backendBase()) return { streaming: false, available: false };
   try {
-    const url = `${base()}/api/status`;
+    const url = `${backendBase()}/api/relay/status`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`relay status failed: ${res.status}`);
     return res.json();
   } catch (e) {
     console.warn('Failed to fetch relay status:', e);
-    return { streaming: false };
+    return { streaming: false, available: false };
+  }
+}
+
+export async function checkRelayHealth() {
+  if (!backendBase()) return { available: false, error: 'No backend configured' };
+  try {
+    const url = `${backendBase()}/api/relay/healthz`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`relay health check failed: ${res.status}`);
+    return res.json();
+  } catch (e) {
+    console.warn('Failed to check relay health:', e);
+    return { available: false, error: String(e) };
   }
 }
