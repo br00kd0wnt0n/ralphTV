@@ -85,7 +85,7 @@ export default function HlsPlayer() {
     const video = videoRef.current;
     if (!video) return;
 
-    const streamUrl = `${CONFIG.RELAY_BASE_URL}/hls/live.m3u8`;
+    const streamUrl = `${CONFIG.RELAY_BASE_URL}/hls/stream.m3u8`;
 
     if (Hls.isSupported()) {
       const hls = new Hls({
@@ -212,7 +212,7 @@ export default function HlsPlayer() {
               <span style={{ color: streaming ? 'var(--brand-teal)' : '#888', fontWeight: 'bold' }}>
                 {streaming ? '● LIVE' : '○ Waiting'}
               </span>
-              <span style={{ marginLeft: 8 }}>{CONFIG.RELAY_BASE_URL}/hls/live.m3u8</span>
+              <span style={{ marginLeft: 8 }}>{CONFIG.RELAY_BASE_URL}/hls/stream.m3u8</span>
             </>
           ) : (
             <span style={{ color: '#d32f2f' }}>No relay configured</span>
