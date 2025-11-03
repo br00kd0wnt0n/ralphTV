@@ -237,8 +237,15 @@ export default function ContentScheduler() {
       <ScheduleDiagnostics />
       </div>
 
-      {/* HLS Stream Preview */}
-      {CONFIG.RELAY_BASE_URL && <HlsPlayer />}
+      {/* Preview Panel Container - HLS Player and Asset Preview side by side */}
+      <div className="preview-panel-container">
+        {CONFIG.RELAY_BASE_URL && <HlsPlayer />}
+        <PreviewPane
+          asset={selectedAssetId ? (assetMap.get(selectedAssetId) || null) : null}
+          onClose={() => setSelectedAssetId(null)}
+          categories={categories}
+        />
+      </div>
 
       <DragDropContext onDragEnd={onDragEnd}>
         <div className="content-layout">
@@ -280,13 +287,6 @@ export default function ContentScheduler() {
           <CategoriesPanel categories={categories} onChange={setCategories} apiEnabled={!!CONFIG.API_BASE_URL} />
         </div>
       </DragDropContext>
-
-      {/* Preview Modal */}
-      <PreviewPane
-        asset={selectedAssetId ? (assetMap.get(selectedAssetId) || null) : null}
-        onClose={() => setSelectedAssetId(null)}
-        categories={categories}
-      />
     </div>
   );
 }

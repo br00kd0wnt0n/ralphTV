@@ -381,22 +381,27 @@
   margin-bottom: 4px;
 }
 
-/* Asset Preview Modal */
-.asset-preview-modal {
-  position: fixed;
+/* Preview Panel Container - HLS Player and Asset Preview */
+.preview-panel-container {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+/* Asset Preview Panel */
+.asset-preview-panel {
   width: 360px;
-  max-height: calc(100vh - 120px);
+  max-height: 600px;
   background: var(--win95-face);
   border-top: 2px solid var(--border-light);
   border-left: 2px solid var(--border-light);
   border-right: 2px solid var(--border-dark);
   border-bottom: 2px solid var(--border-dark);
-  box-shadow: 4px 4px 10px rgba(0,0,0,0.4);
-  z-index: 9999;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  user-select: none;
+  flex: 0 0 auto;
 }
 
 .preview-header {
@@ -409,12 +414,7 @@
   justify-content: space-between;
   align-items: center;
   flex-shrink: 0;
-  cursor: grab;
   user-select: none;
-}
-
-.preview-header:active {
-  cursor: grabbing;
 }
 
 .preview-header h4 {

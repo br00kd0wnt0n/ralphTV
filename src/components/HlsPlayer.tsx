@@ -1,18 +1,59 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Hls from 'hls.js';
 import { CONFIG } from '../config';
+import { getRelayStatus } from '../api/relay';
 
 export default function HlsPlayer() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [streaming, setStreaming] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const checkIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Check relay status periodically
   useEffect(() => {
     if (!CONFIG.RELAY_BASE_URL) {
       setError('No relay URL configured');
-      setLoading(false);
+      return;
+    }
+
+    const checkStatus = async () => {
+      try {
+        const status = await getRelayStatus();
+        setStreaming(status.streaming);
+        if (!status.streaming && isPlaying) {
+          // Stream stopped, pause video
+          const video = videoRef.current;
+          if (video) {
+            video.pause();
+            setIsPlaying(false);
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to check relay status:', e);
+        setStreaming(false);
+      }
+    };
+
+    checkStatus();
+    checkIntervalRef.current = setInterval(checkStatus, 3000);
+
+    return () => {
+      if (checkIntervalRef.current) {
+        clearInterval(checkIntervalRef.current);
+      }
+    };
+  }, [isPlaying]);
+
+  // Load and play stream when streaming becomes active
+  useEffect(() => {
+    if (!CONFIG.RELAY_BASE_URL || !streaming) {
+      // Clean up existing HLS instance if stream stopped
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
       return;
     }
 
@@ -26,6 +67,8 @@ export default function HlsPlayer() {
         enableWorker: true,
         lowLatencyMode: true,
         backBufferLength: 90,
+        maxBufferLength: 30,
+        maxMaxBufferLength: 60,
       });
 
       hlsRef.current = hls;
@@ -35,11 +78,11 @@ export default function HlsPlayer() {
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
-              setError('Network error - retrying...');
+              console.log('Network error - retrying...');
               setTimeout(() => hls.startLoad(), 3000);
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
-              setError('Media error - attempting recovery...');
+              console.log('Media error - attempting recovery...');
               hls.recoverMediaError();
               break;
             default:
@@ -51,10 +94,13 @@ export default function HlsPlayer() {
       });
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        setLoading(false);
         setError(null);
-        video.play().catch(() => {
-          // Autoplay might be blocked - user needs to click play
+        // Auto-play when manifest is loaded
+        video.play().then(() => {
+          setIsPlaying(true);
+        }).catch((e) => {
+          console.warn('Autoplay failed:', e);
+          setError('Click video to start playback');
         });
       });
 
@@ -71,33 +117,20 @@ export default function HlsPlayer() {
       // Native HLS support (Safari)
       video.src = streamUrl;
       video.addEventListener('loadedmetadata', () => {
-        setLoading(false);
-        video.play().catch(() => {
-          // Autoplay might be blocked
+        video.play().then(() => {
+          setIsPlaying(true);
+        }).catch((e) => {
+          console.warn('Autoplay failed:', e);
+          setError('Click video to start playback');
         });
       });
       video.addEventListener('error', () => {
         setError('Error loading stream');
-        setLoading(false);
       });
     } else {
       setError('HLS not supported in this browser');
-      setLoading(false);
     }
-  }, []);
-
-  const togglePlay = () => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    if (video.paused) {
-      video.play();
-      setIsPlaying(true);
-    } else {
-      video.pause();
-      setIsPlaying(false);
-    }
-  };
+  }, [streaming]);
 
   return (
     <div className="hls-player-container">
@@ -108,15 +141,27 @@ export default function HlsPlayer() {
       <div className="hls-player-video">
         <video
           ref={videoRef}
-          controls
           muted
           playsInline
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}
+          onClick={(e) => {
+            // Allow click to play if autoplay was blocked
+            const video = e.currentTarget;
+            if (video.paused && streaming) {
+              video.play();
+            }
+          }}
         />
       </div>
 
-      {loading && (
+      {!streaming && !error && (
+        <div className="hls-player-status">
+          <div className="status-badge loading">Waiting for stream...</div>
+        </div>
+      )}
+
+      {streaming && !isPlaying && !error && (
         <div className="hls-player-status">
           <div className="status-badge loading">Loading stream...</div>
         </div>
@@ -128,17 +173,15 @@ export default function HlsPlayer() {
         </div>
       )}
 
-      <div className="hls-player-controls">
-        <button
-          className="win95-button"
-          onClick={togglePlay}
-          disabled={!!error || loading}
-        >
-          {isPlaying ? 'Pause' : 'Play'}
-        </button>
+      <div className="hls-player-info">
         <div className="stream-url-info">
           {CONFIG.RELAY_BASE_URL ? (
-            <span>{CONFIG.RELAY_BASE_URL}/hls/live.m3u8</span>
+            <>
+              <span style={{ color: streaming ? 'var(--brand-teal)' : '#888', fontWeight: 'bold' }}>
+                {streaming ? '● LIVE' : '○ Waiting'}
+              </span>
+              <span style={{ marginLeft: 8 }}>{CONFIG.RELAY_BASE_URL}/hls/live.m3u8</span>
+            </>
           ) : (
             <span style={{ color: '#d32f2f' }}>No relay configured</span>
           )}

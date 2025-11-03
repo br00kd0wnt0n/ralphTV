@@ -21,49 +21,6 @@ export default function PreviewPane({
   categories?: Category[];
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const modalRef = useRef<HTMLDivElement | null>(null);
-  const [position, setPosition] = useState({ x: window.innerWidth - 384, y: window.innerHeight - 600 });
-  const [dragging, setDragging] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-
-  const handleMouseDown = (e: React.MouseEvent) => {
-    const target = e.target as HTMLElement;
-    // Don't start dragging if clicking on a button or interactive element
-    if (target.closest('button') || target.closest('input') || target.closest('select')) {
-      return;
-    }
-    if (target.closest('.preview-header')) {
-      setDragging(true);
-      setDragStart({
-        x: e.clientX - position.x,
-        y: e.clientY - position.y
-      });
-    }
-  };
-
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (dragging) {
-        setPosition({
-          x: Math.max(0, Math.min(window.innerWidth - 360, e.clientX - dragStart.x)),
-          y: Math.max(0, Math.min(window.innerHeight - 200, e.clientY - dragStart.y))
-        });
-      }
-    };
-
-    const handleMouseUp = () => {
-      setDragging(false);
-    };
-
-    if (dragging) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-      return () => {
-        document.removeEventListener('mousemove', handleMouseMove);
-        document.removeEventListener('mouseup', handleMouseUp);
-      };
-    }
-  }, [dragging, dragStart]);
 
   useEffect(() => {
     if (!asset || !containerRef.current) return;
@@ -93,39 +50,25 @@ export default function PreviewPane({
 
   const category = categories?.find(c => c.id === asset?.categoryId);
 
+  if (!asset) return null;
+
   return (
-    <div
-      ref={modalRef}
-      className="asset-preview-modal"
-      style={{
-        left: `${position.x}px`,
-        top: `${position.y}px`,
-        cursor: dragging ? 'grabbing' : 'default'
-      }}
-      onMouseDown={handleMouseDown}
-    >
-      <div className="preview-header" style={{ cursor: dragging ? 'grabbing' : 'grab' }}>
+    <div className="asset-preview-panel">
+      <div className="preview-header">
         <h4>Asset Preview</h4>
-        {asset && (
-          <button
-            className="win95-button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onClose();
-            }}
-            style={{ padding: '2px 8px', minWidth: 50, cursor: 'pointer' }}
-          >
-            Close
-          </button>
-        )}
+        <button
+          className="win95-button"
+          onClick={onClose}
+          style={{ padding: '2px 8px', minWidth: 50, cursor: 'pointer' }}
+        >
+          Close
+        </button>
       </div>
 
       <div ref={containerRef} className="preview-player" style={{ background: '#000', minHeight: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        {!asset && <span style={{ color: '#666', fontSize: 11 }}>Select an asset to preview</span>}
       </div>
 
-      {asset && (
-        <div className="preview-metadata">
+      <div className="preview-metadata">
           <div className="metadata-row">
             <label>Name:</label>
             <span>{asset.name}</span>
@@ -188,7 +131,6 @@ export default function PreviewPane({
             </div>
           )}
         </div>
-      )}
     </div>
   );
 }

@@ -7,8 +7,9 @@
   border-right: 2px solid var(--border-dark);
   border-bottom: 2px solid var(--border-dark);
   padding: 0;
-  margin-bottom: 10px;
-  max-width: 640px;
+  width: 640px;
+  max-width: 100%;
+  flex: 0 0 auto;
 }
 
 .hls-player-header {
@@ -73,7 +74,7 @@
   color: white;
 }
 
-.hls-player-controls {
+.hls-player-info {
   padding: 8px;
   background: var(--bg-secondary);
   border-top: 2px solid var(--border-dark);
@@ -84,10 +85,6 @@
   display: flex;
   gap: 8px;
   align-items: center;
-}
-
-.hls-player-controls .win95-button {
-  flex-shrink: 0;
 }
 
 .stream-url-info {
