@@ -61,7 +61,8 @@ echo "==> Generating nginx config..."
 echo "==> RELAY_HTTP_PORT=${RELAY_HTTP_PORT}"
 echo "==> RELAY_RTMP_PORT=${RELAY_RTMP_PORT}"
 echo "==> NGINX_WORKER_PROCESSES=${NGINX_WORKER_PROCESSES}"
-envsubst < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
+# Only substitute our variables, not nginx variables like $request_method
+envsubst '${NGINX_WORKER_PROCESSES} ${RELAY_RTMP_PORT} ${RELAY_PUSH_LINES} ${RELAY_HTTP_PORT}' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
 
 echo "==> Generated config:"
 cat /etc/nginx/nginx.conf
