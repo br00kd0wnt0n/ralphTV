@@ -9,12 +9,13 @@ import path from 'node:path';
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
 const s3 = new S3Client({ region: process.env.AWS_REGION });
 const BUCKET = process.env.S3_BUCKET_UPLOADS;
-const TARGET_W = parseInt(process.env.TARGET_WIDTH || '1920', 10);
-const TARGET_H = parseInt(process.env.TARGET_HEIGHT || '1080', 10);
-const FPS = parseInt(process.env.FPS || '30', 10);
+const TARGET_W = parseInt(process.env.TARGET_WIDTH || '1280', 10);
+const TARGET_H = parseInt(process.env.TARGET_HEIGHT || '720', 10);
+const FPS = parseInt(process.env.FPS || '24', 10);
 const GOP = parseInt(process.env.GOP || String(FPS * 2), 10);
-const VBIT = process.env.VIDEO_BITRATE || '4500k';
+const VBIT = process.env.VIDEO_BITRATE || '2500k';
 const ABIT = process.env.AUDIO_BITRATE || '160k';
+const PRESET = process.env.PRESET || 'ultrafast';
 
 async function nextJob() {
   const { rows } = await pool.query(`
@@ -53,10 +54,18 @@ async function normalize(inPath) {
   const args = [
     '-loglevel', 'error',
     '-i', inPath,
-    '-c:v', 'libx264', '-preset', 'veryfast', '-profile:v', 'high', '-pix_fmt', 'yuv420p',
+    '-c:v', 'libx264', '-preset', PRESET, '-profile:v', 'high', '-pix_fmt', 'yuv420p',
     '-b:v', VBIT, '-maxrate', VBIT, '-bufsize', '10000k',
-    '-g', String(GOP), '-r', String(FPS), '-vf', `scale=${TARGET_W}:${TARGET_H}:force_original_aspect_ratio=decrease,pad=${TARGET_W}:${TARGET_H}:(ow-iw)/2:(oh-ih)/2:color=black`,
-    '-c:a', 'aac', '-b:a', ABIT, '-ar', '48000', '-ac', '2', '-movflags', '+faststart', out,
+    // Exact 2-second keyframes for HLS segmentation
+    '-g', String(GOP),
+    '-keyint_min', String(GOP),
+    '-sc_threshold', '0',
+    '-force_key_frames', 'expr:gte(t,n_forced*2)',
+    '-r', String(FPS),
+    '-vf', `scale=${TARGET_W}:${TARGET_H}:force_original_aspect_ratio=decrease,pad=${TARGET_W}:${TARGET_H}:(ow-iw)/2:(oh-ih)/2:color=black`,
+    '-c:a', 'aac', '-b:a', ABIT, '-ar', '48000', '-ac', '2',
+    '-movflags', '+faststart',
+    out,
   ];
   await new Promise((resolve, reject) => {
     const p = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -70,7 +79,10 @@ async function uploadNorm(assetId, filePath) {
   const key = `normalized/${assetId}.mp4`;
   const body = await fs.readFile(filePath);
   await s3.send(new PutObjectCommand({ Bucket: BUCKET, Key: key, Body: body, ContentType: 'video/mp4' }));
-  await pool.query('update assets set s3_key_norm=$2, norm_status=$3, norm_error=null where id=$1', [assetId, key, 'ready']);
+  await pool.query(
+    `update assets set s3_key_norm=$2, norm_status=$3, norm_error=null, norm_width=$4, norm_height=$5, norm_fps=$6, norm_bitrate=$7 where id=$1`,
+    [assetId, key, 'ready', TARGET_W, TARGET_H, FPS, parseInt(VBIT.replace('k', ''), 10)]
+  );
   return key;
 }
 

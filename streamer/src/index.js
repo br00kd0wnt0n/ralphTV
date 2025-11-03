@@ -48,12 +48,35 @@ async function presignedUrl(assetId) {
   return url;
 }
 
-function ffmpegArgs(inputUrl, offsetSec = 0) {
-  const [w, h] = CONFIG.RESOLUTION.split('x').map((n) => parseInt(n, 10));
-  // Use target as provided unless FORCE_RTMPS is true
+async function getAssetInfo(assetId) {
+  const u = `${CONFIG.API_BASE_URL}/assets/${encodeURIComponent(assetId)}/url`;
+  const data = await getJSON(u);
+  return { url: data.url, normalized: data.normalized || false };
+}
+
+function ffmpegArgs(inputUrl, offsetSec = 0, useCopyMode = false) {
   const target = (process.env.STREAMER_FORCE_RTMPS === 'true')
     ? (CONFIG.RTMP_TARGET || '').replace(/^rtmp:\/\//, 'rtmps://')
     : (CONFIG.RTMP_TARGET || '');
+
+  // Copy mode: for pre-normalized files, just stream without re-encoding
+  if (useCopyMode) {
+    return [
+      '-loglevel', 'info',
+      '-re',
+      ...(offsetSec > 0 ? ['-ss', String(Math.floor(offsetSec))] : []),
+      '-i', inputUrl,
+      '-c:v', 'copy',
+      '-c:a', 'copy',
+      '-flvflags', 'no_duration_filesize',
+      '-f', 'flv',
+      '-rtmp_live', 'live',
+      target,
+    ];
+  }
+
+  // Encode mode: for non-normalized files
+  const [w, h] = CONFIG.RESOLUTION.split('x').map((n) => parseInt(n, 10));
   const tuneGop = (process.env.STREAMER_TUNE_GOP === 'true');
   const args = [
     '-loglevel', 'info',
@@ -98,7 +121,7 @@ const MIN_SEC = parseInt(process.env.STREAMER_MIN_SEC || '0', 10) || 0;
 const CONTINUOUS = (process.env.STREAMER_CONTINUOUS === 'true');
 const CONTINUOUS_LOOPS = parseInt(process.env.STREAMER_CONTINUOUS_LOOPS || '3', 10) || 3;
 
-async function streamOnce(url, offsetSec) {
+async function streamOnce(url, offsetSec, useCopyMode = false) {
   // Download remote to a local temp file for stable decoding
   let localPath = url;
   let downloaded = false;
@@ -111,9 +134,9 @@ async function streamOnce(url, offsetSec) {
       localPath = url;
     }
   }
-  // Optional normalization for first item
+  // Optional normalization for first item (skip if already normalized via API)
   let normalizedPath = null;
-  if (NORMALIZE && downloaded) {
+  if (NORMALIZE && downloaded && !useCopyMode) {
     try {
       normalizedPath = await normalizeToTemp(localPath, 'single_norm');
     } catch (e) {
@@ -122,24 +145,9 @@ async function streamOnce(url, offsetSec) {
   }
 
   return new Promise((resolve, reject) => {
-    // Use -ss before -i for fast seek when local file
-    const [w, h] = CONFIG.RESOLUTION.split('x').map((n) => parseInt(n, 10));
-    const target = (process.env.STREAMER_FORCE_RTMPS === 'true')
-      ? (CONFIG.RTMP_TARGET || '').replace(/^rtmp:\/\//, 'rtmps://')
-      : (CONFIG.RTMP_TARGET || '');
-    const args = [
-      '-loglevel', 'info',
-      '-re',
-      ...(offsetSec > 0 ? ['-ss', String(Math.floor(offsetSec))] : []),
-      '-i', (normalizedPath || localPath),
-      '-c:v', 'libx264', '-preset', CONFIG.PRESET, '-profile:v', 'high', '-pix_fmt', 'yuv420p',
-      '-b:v', CONFIG.VIDEO_BITRATE, '-maxrate', CONFIG.VIDEO_BITRATE, '-bufsize', '10000k',
-      '-g', String(CONFIG.GOP), '-keyint_min', String(CONFIG.GOP), '-sc_threshold', '0', '-force_key_frames', 'expr:gte(t,n_forced*2)', '-r', String(CONFIG.FPS),
-      '-vf', `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`,
-      '-c:a', 'aac', '-b:a', CONFIG.AUDIO_BITRATE, '-ar', '48000', '-ac', '2',
-      '-flvflags', 'no_duration_filesize', '-f', 'flv', '-rtmp_live', 'live', target,
-    ];
-    console.log('ffmpeg', args.join(' '));
+    const inputPath = normalizedPath || localPath;
+    const args = ffmpegArgs(inputPath, offsetSec, useCopyMode);
+    console.log('ffmpeg', useCopyMode ? '[COPY MODE]' : '[ENCODE MODE]', args.join(' '));
     CHILD = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
     CHILD.on('error', (err) => { console.error('ffmpeg spawn error', err); reject(err); });
     CHILD.stdout.on('data', (d) => process.stdout.write(d.toString()));
@@ -552,8 +560,15 @@ async function main() {
           // Fallback: sequential normalized per item with slate between
           for (let i = 0; i < items.length; i++) {
             if (!RUNNING) break;
-            const u = items[i].url || (await presignedUrl(items[i].assetId));
-            try { await streamOnce(u, 0); } catch (err) { console.error('sequential fallback item failed', err); }
+            let u, isNorm = false;
+            if (items[i].url) {
+              u = items[i].url;
+            } else {
+              const info = await getAssetInfo(items[i].assetId);
+              u = info.url;
+              isNorm = info.normalized;
+            }
+            try { await streamOnce(u, 0, isNorm); } catch (err) { console.error('sequential fallback item failed', err); }
             if (SLATE_BETWEEN_SEC > 0) { try { await streamSlate(SLATE_BETWEEN_SEC); } catch {} }
           }
         }
@@ -568,12 +583,19 @@ async function main() {
       // play from pointer to end; use single for first if offset>0, then batch
       if (idx < items.length) {
         const first = items[idx];
-        const firstUrl = first.url || (await presignedUrl(first.assetId));
+        let firstUrl, isNormalized = false;
+        if (first.url) {
+          firstUrl = first.url;
+        } else {
+          const info = await getAssetInfo(first.assetId);
+          firstUrl = info.url;
+          isNormalized = info.normalized;
+        }
         CURRENT = { assetId: first.assetId, index: idx, startedAt: Date.now(), url: firstUrl };
         // Retry logic for first item
         let attempts = 0;
         while (attempts <= MAX_RETRIES) {
-          try { await streamOnce(firstUrl, offset); break; }
+          try { await streamOnce(firstUrl, offset, isNormalized); break; }
           catch (e) { attempts++; console.error(`first item failed (attempt ${attempts})`, e); if (attempts > MAX_RETRIES) throw e; }
         }
         if (SLATE_BETWEEN_SEC > 0 && (DISABLE_BATCH || idx + 1 >= items.length)) {

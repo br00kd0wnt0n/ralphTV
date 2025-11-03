@@ -428,12 +428,19 @@ app.get('/assets/:id/url', authMiddleware, async (req, res) => {
   if (!hasS3) return res.status(501).json({ message: 'S3 not configured' });
   const id = req.params.id;
   try {
-    const { rows } = await pool.query('select s3_key, mime_type from assets where id=$1', [id]);
+    const { rows } = await pool.query(
+      'select s3_key, s3_key_norm, norm_status, mime_type from assets where id=$1',
+      [id]
+    );
     if (!rows.length) return res.status(404).json({ message: 'Not found' });
-    const key = rows[0].s3_key;
+
+    // Prefer normalized version if available and ready
+    const useNormalized = rows[0].s3_key_norm && rows[0].norm_status === 'ready';
+    const key = useNormalized ? rows[0].s3_key_norm : rows[0].s3_key;
+
     const cmd = new GetObjectCommand({ Bucket: process.env.S3_BUCKET_UPLOADS, Key: key });
     const url = await getSignedUrl(s3, cmd, { expiresIn: (parseInt(process.env.PRESIGN_TTL_MINUTES || '10', 10)) * 60 });
-    return res.json({ url });
+    return res.json({ url, normalized: useNormalized });
   } catch (e) {
     console.error('asset url error', e);
     return res.status(500).json({ message: 'Server error' });
