@@ -523,6 +523,21 @@ app.post('/admin/normalize/backfill', authMiddleware, async (req, res) => {
   }
 });
 
+// Debug: Check normalization status
+app.get('/debug/normalized', authMiddleware, async (_req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      select id, file_name, norm_status, s3_key_norm
+      from assets
+      order by uploaded_at desc
+    `);
+    return res.json({ assets: rows });
+  } catch (e) {
+    console.error('debug normalized error', e);
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // Debug schedule status: which items exist in assets table and which are missing
 app.get('/debug/schedule/:channel/:week/:day', authMiddleware, async (req, res) => {
   const { channel, week, day } = req.params;
