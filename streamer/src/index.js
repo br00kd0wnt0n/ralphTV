@@ -350,20 +350,35 @@ async function streamSlate(seconds) {
 }
 
 async function buildContinuousList(items) {
-  // Normalize all items and create a concat list with optional slate between
+  // Check if items are pre-normalized via API; use normalized URLs if available
   const toCleanup = [];
   const normItems = [];
+  let allNormalized = true;
+
   for (let i = 0; i < items.length; i++) {
-    const u = items[i].url || (await presignedUrl(items[i].assetId));
+    let u, isNorm = false;
+    if (items[i].url) {
+      u = items[i].url;
+    } else {
+      const info = await getAssetInfo(items[i].assetId);
+      u = info.url;
+      isNorm = info.normalized;
+    }
+
+    if (!isNorm) allNormalized = false;
+
     const dl = await downloadToTemp(u, `cont_${i}`);
     toCleanup.push(dl);
+
+    // Only do local normalization if not pre-normalized and NORMALIZE flag is set
     let nm = dl;
-    if (NORMALIZE) {
+    if (NORMALIZE && !isNorm) {
       nm = await normalizeToTemp(dl, `cont_norm_${i}`);
       toCleanup.push(nm);
     }
     normItems.push({ path: nm });
   }
+
   const slate = await ensureSlateLocal();
   const listPath = path.join(os.tmpdir(), `ralphtv_cont_${Date.now()}.txt`);
   let lines = [];
@@ -371,43 +386,56 @@ async function buildContinuousList(items) {
   for (let loop = 0; loop < Math.max(1, CONTINUOUS_LOOPS); loop++) {
     for (let i = 0; i < normItems.length; i++) {
       const it = normItems[i];
-      // Just list files; avoid duration directive ordering pitfalls
       lines.push(`file '${it.path.replace(/'/g, "'\\''")}'`);
-      // Insert slate between items
       if (SLATE_BETWEEN_SEC > 0 && slate) {
         lines.push(`file '${slate.replace(/'/g, "'\\''")}'`);
       }
     }
-    // End-of-loop slate to hide reconnect if process ends here
     if (slate && SLATE_IDLE_SEC > 0) {
       lines.push(`file '${slate.replace(/'/g, "'\\''")}'`);
     }
   }
   await fs.writeFile(listPath, lines.join('\n'), 'utf8');
-  return { listPath, toCleanup };
+  console.log(`==> Continuous list built: ${normItems.length} items, allNormalized=${allNormalized}`);
+  return { listPath, toCleanup, allNormalized };
 }
 
 async function streamContinuous(items) {
-  const [w, h] = CONFIG.RESOLUTION.split('x').map((n) => parseInt(n, 10));
   const target = (process.env.STREAMER_FORCE_RTMPS === 'true')
     ? (CONFIG.RTMP_TARGET || '').replace(/^rtmp:\/\//, 'rtmps://')
     : (CONFIG.RTMP_TARGET || '');
-  const { listPath, toCleanup } = await buildContinuousList(items);
-  const args = [
-    '-loglevel', 'info',
-    '-re', '-f', 'concat', '-safe', '0', '-i', listPath,
-    '-c:v', 'libx264', '-preset', CONFIG.PRESET, '-profile:v', 'high', '-pix_fmt', 'yuv420p',
-    '-b:v', CONFIG.VIDEO_BITRATE, '-maxrate', CONFIG.VIDEO_BITRATE, '-bufsize', '10000k',
-    // Exact 2-second keyframes for HLS segmentation
-    '-g', String(CONFIG.GOP),
-    '-keyint_min', String(CONFIG.GOP),
-    '-sc_threshold', '0',
-    '-force_key_frames', 'expr:gte(t,n_forced*2)',
-    '-r', String(CONFIG.FPS),
-    '-vf', `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`,
-    '-c:a', 'aac', '-b:a', CONFIG.AUDIO_BITRATE, '-ar', '48000', '-ac', '2',
-    '-flvflags', 'no_duration_filesize', '-f', 'flv', '-rtmp_live', 'live', target,
-  ];
+  const { listPath, toCleanup, allNormalized } = await buildContinuousList(items);
+
+  let args;
+  if (allNormalized) {
+    // COPY MODE: All assets pre-normalized, just stream without re-encoding
+    console.log('==> Using COPY MODE (all assets pre-normalized)');
+    args = [
+      '-loglevel', 'info',
+      '-re', '-f', 'concat', '-safe', '0', '-i', listPath,
+      '-c:v', 'copy',
+      '-c:a', 'copy',
+      '-flvflags', 'no_duration_filesize', '-f', 'flv', '-rtmp_live', 'live', target,
+    ];
+  } else {
+    // ENCODE MODE: Some assets not normalized, need to encode
+    console.log('==> Using ENCODE MODE (some assets not pre-normalized)');
+    const [w, h] = CONFIG.RESOLUTION.split('x').map((n) => parseInt(n, 10));
+    args = [
+      '-loglevel', 'info',
+      '-re', '-f', 'concat', '-safe', '0', '-i', listPath,
+      '-c:v', 'libx264', '-preset', CONFIG.PRESET, '-profile:v', 'high', '-pix_fmt', 'yuv420p',
+      '-b:v', CONFIG.VIDEO_BITRATE, '-maxrate', CONFIG.VIDEO_BITRATE, '-bufsize', '10000k',
+      '-g', String(CONFIG.GOP),
+      '-keyint_min', String(CONFIG.GOP),
+      '-sc_threshold', '0',
+      '-force_key_frames', 'expr:gte(t,n_forced*2)',
+      '-r', String(CONFIG.FPS),
+      '-vf', `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`,
+      '-c:a', 'aac', '-b:a', CONFIG.AUDIO_BITRATE, '-ar', '48000', '-ac', '2',
+      '-flvflags', 'no_duration_filesize', '-f', 'flv', '-rtmp_live', 'live', target,
+    ];
+  }
   console.log('ffmpeg continuous', args.join(' '));
   await new Promise((resolve, reject) => {
     CHILD = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
