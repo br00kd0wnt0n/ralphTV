@@ -5,7 +5,8 @@ import bcrypt from 'bcryptjs';
 import { Pool } from 'pg';
 
 const rl = readline.createInterface({ input, output });
-const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+const sslConfig = process.env.DATABASE_URL?.includes('localhost') ? false : { rejectUnauthorized: false };
+const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: sslConfig });
 
 async function main() {
   const email = process.env.ADMIN_EMAIL || (await rl.question('Admin email: '));
