@@ -26,8 +26,12 @@ export default function HlsPlayer({ onVideoReady, volume = 0.7, onVolumeChange }
     }
   }, [onVideoReady]);
 
-  // Volume is controlled by VolumeVisualizer's GainNode via Web Audio API
-  // Don't set video.volume here - it's handled by the Web Audio graph
+  // Set video volume directly
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.volume = volume;
+    }
+  }, [volume]);
 
   // Check relay health on mount
   useEffect(() => {
@@ -190,7 +194,6 @@ export default function HlsPlayer({ onVideoReady, volume = 0.7, onVolumeChange }
       <div className="hls-player-video">
         <video
           ref={videoRef}
-          muted={false}
           playsInline
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}
@@ -249,7 +252,10 @@ export default function HlsPlayer({ onVideoReady, volume = 0.7, onVolumeChange }
               if (onVolumeChange) {
                 onVolumeChange(newVolume);
               }
-              // Volume controlled by VolumeVisualizer's GainNode, not video.volume
+              // Set video volume directly
+              if (videoRef.current) {
+                videoRef.current.volume = newVolume;
+              }
             }}
             className="volume-slider"
             title="Volume"

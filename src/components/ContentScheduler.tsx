@@ -250,7 +250,8 @@ export default function ContentScheduler() {
             onVolumeChange={setLivestreamVolume}
           />
         )}
-        {CONFIG.RELAY_BASE_URL && <VolumeVisualizer audioElement={livestreamVideo} volume={livestreamVolume} />}
+        {/* VolumeVisualizer disabled - breaks audio routing */}
+        {/* {CONFIG.RELAY_BASE_URL && <VolumeVisualizer audioElement={livestreamVideo} volume={livestreamVolume} />} */}
         <PreviewPane
           asset={selectedAssetId ? (assetMap.get(selectedAssetId) || null) : null}
           onClose={() => setSelectedAssetId(null)}
