@@ -98,8 +98,18 @@ function ffmpegArgs(inputUrl, offsetSec = 0, useCopyMode = false) {
   if (useLogoOverlay) {
     const logoInputIndex = 1;
     const audioInputIndex = 2;
-    // Build complex filter: scale+pad video, scale logo with opacity, overlay in top-right
-    const filterComplex = `[0:v]${videoFilter}[v];[${logoInputIndex}:v]scale=${LOGO_SCALE}:-1,format=rgba,colorchannelmixer=aa=${LOGO_OPACITY}[logo];[v][logo]overlay=W-w-20:20`;
+    let filterComplex;
+
+    if (LOGO_IS_VIDEO) {
+      // MP4 logo: loop the video infinitely and overlay
+      // Use loop filter with shortest option to loop indefinitely
+      // Format: loop=loop=-1:size=32767 (max frames before loop), then setpts to sync timing
+      filterComplex = `[0:v]${videoFilter}[v];[${logoInputIndex}:v]loop=loop=-1:size=32767,setpts=N/(${CONFIG.FPS}*TB),scale=${LOGO_SCALE}:-1,format=rgba,colorchannelmixer=aa=${LOGO_OPACITY}[logo];[v][logo]overlay=W-w-20:20:shortest=1`;
+    } else {
+      // PNG logo: static image overlay
+      filterComplex = `[0:v]${videoFilter}[v];[${logoInputIndex}:v]scale=${LOGO_SCALE}:-1,format=rgba,colorchannelmixer=aa=${LOGO_OPACITY}[logo];[v][logo]overlay=W-w-20:20`;
+    }
+
     args.push('-filter_complex', filterComplex);
     args.push('-map', '0:a?', '-map', `${audioInputIndex}:a`);
   } else {
@@ -149,6 +159,7 @@ const LOGO_PATH = process.env.LOGO_PATH || '/app/assets/logo.png';
 const LOGO_SCALE = parseInt(process.env.LOGO_SCALE || '200', 10);
 const LOGO_OPACITY = parseFloat(process.env.LOGO_OPACITY || '0.8');
 let LOGO_EXISTS = false;
+let LOGO_IS_VIDEO = false;
 
 // Cleanup function with SIGKILL fallback
 async function cleanupStreamer() {
@@ -569,7 +580,13 @@ async function main() {
     try {
       await fs.access(LOGO_PATH);
       LOGO_EXISTS = true;
-      console.log(`==> Logo overlay enabled: ${LOGO_PATH} (scale=${LOGO_SCALE}px, opacity=${LOGO_OPACITY})`);
+
+      // Detect if logo is video (MP4) or image (PNG)
+      const ext = LOGO_PATH.toLowerCase();
+      LOGO_IS_VIDEO = ext.endsWith('.mp4') || ext.endsWith('.mov');
+
+      const logoType = LOGO_IS_VIDEO ? 'animated (looping)' : 'static';
+      console.log(`==> Logo overlay enabled: ${LOGO_PATH} (${logoType}, scale=${LOGO_SCALE}px, opacity=${LOGO_OPACITY})`);
     } catch {
       console.warn(`==> Logo overlay enabled but file not found: ${LOGO_PATH}`);
       console.warn('==> Streaming will continue without logo overlay');
