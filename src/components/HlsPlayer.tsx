@@ -26,12 +26,13 @@ export default function HlsPlayer({ onVideoReady, volume = 0.7, onVolumeChange }
     }
   }, [onVideoReady]);
 
-  // Set initial and updated volume on video element
-  useEffect(() => {
-    if (videoRef.current) {
-      videoRef.current.volume = volume;
-    }
-  }, [volume]);
+  // Note: Volume is controlled by VolumeVisualizer's GainNode in Web Audio API graph
+  // If VolumeVisualizer is disabled, uncomment this to set video.volume directly:
+  // useEffect(() => {
+  //   if (videoRef.current) {
+  //     videoRef.current.volume = volume;
+  //   }
+  // }, [volume]);
 
   // Check relay health on mount
   useEffect(() => {
@@ -253,10 +254,7 @@ export default function HlsPlayer({ onVideoReady, volume = 0.7, onVolumeChange }
               if (onVolumeChange) {
                 onVolumeChange(newVolume);
               }
-              // Set video volume directly since VolumeVisualizer is disabled
-              if (videoRef.current) {
-                videoRef.current.volume = newVolume;
-              }
+              // Note: Volume is controlled by VolumeVisualizer's GainNode, not video.volume
               if (newVolume === 0) {
                 setMuted(true);
               } else if (muted) {

@@ -33,7 +33,7 @@ export default function VolumeVisualizer({ audioElement, volume = 0.7 }: VolumeV
       const resumeAudioContext = () => {
         if (audioContext.state === 'suspended') {
           audioContext.resume().then(() => {
-            console.log('[VolumeVisualizer] AudioContext resumed from', audioContext.state);
+            console.log('[VolumeVisualizer] AudioContext resumed to:', audioContext.state);
           }).catch((err) => {
             console.error('[VolumeVisualizer] Failed to resume AudioContext:', err);
           });
@@ -43,15 +43,21 @@ export default function VolumeVisualizer({ audioElement, volume = 0.7 }: VolumeV
       // Try to resume immediately
       resumeAudioContext();
 
-      // Also try on next user interaction
+      // Resume on user interaction
       const interactionHandler = () => {
         resumeAudioContext();
-        // Only need to do this once
         document.removeEventListener('click', interactionHandler);
         document.removeEventListener('keydown', interactionHandler);
       };
-      document.addEventListener('click', interactionHandler);
-      document.addEventListener('keydown', interactionHandler);
+      document.addEventListener('click', interactionHandler, { once: true });
+      document.addEventListener('keydown', interactionHandler, { once: true });
+
+      // Resume when video starts playing
+      const playHandler = () => {
+        console.log('[VolumeVisualizer] Video started playing, resuming AudioContext');
+        resumeAudioContext();
+      };
+      audioElement.addEventListener('play', playHandler);
 
       // Check if MediaElementSource was already created for this element
       let source;
@@ -94,10 +100,11 @@ export default function VolumeVisualizer({ audioElement, volume = 0.7 }: VolumeV
 
       console.log('[VolumeVisualizer] Web Audio API initialized successfully');
 
-      // Store interaction handler for cleanup
+      // Cleanup function
       return () => {
         document.removeEventListener('click', interactionHandler);
         document.removeEventListener('keydown', interactionHandler);
+        audioElement.removeEventListener('play', playHandler);
         if (animationFrameRef.current) {
           cancelAnimationFrame(animationFrameRef.current);
         }
