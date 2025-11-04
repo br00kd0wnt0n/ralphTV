@@ -14,8 +14,9 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
   const [streaming, setStreaming] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [relayAvailable, setRelayAvailable] = useState(true);
-  const [muted, setMuted] = useState(false);
+  const [muted, setMuted] = useState(true); // Start muted to allow autoplay
   const [volume, setVolume] = useState(0.7);
+  const [needsUnmute, setNeedsUnmute] = useState(false);
   const checkIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Expose video element to parent when ready
@@ -133,15 +134,22 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
         }
       });
 
-      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+      hls.on(Hls.Events.MANIFEST_PARSED, async () => {
         setError(null);
-        // Auto-play when manifest is loaded
-        video.play().then(() => {
+        // Auto-play muted (allowed by browsers)
+        try {
+          await video.play();
           setIsPlaying(true);
-        }).catch((e) => {
+          // Try to unmute immediately
+          if (video.muted) {
+            video.muted = false;
+            setMuted(false);
+            setNeedsUnmute(false);
+          }
+        } catch (e) {
           console.warn('Autoplay blocked - waiting for user interaction:', e);
-          // Don't show error, browser requires user interaction
-        });
+          setNeedsUnmute(true);
+        }
       });
 
       hls.loadSource(streamUrl);
@@ -156,13 +164,20 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
       // Native HLS support (Safari)
       video.src = streamUrl;
-      video.addEventListener('loadedmetadata', () => {
-        video.play().then(() => {
+      video.addEventListener('loadedmetadata', async () => {
+        try {
+          await video.play();
           setIsPlaying(true);
-        }).catch((e) => {
+          // Try to unmute immediately
+          if (video.muted) {
+            video.muted = false;
+            setMuted(false);
+            setNeedsUnmute(false);
+          }
+        } catch (e) {
           console.warn('Autoplay blocked - waiting for user interaction:', e);
-          // Don't show error, browser requires user interaction
-        });
+          setNeedsUnmute(true);
+        }
       });
       video.addEventListener('error', () => {
         console.warn('Native HLS playback error');
@@ -194,6 +209,15 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
             // Allow click to play if autoplay was blocked or video is paused
             const video = e.currentTarget;
             setError(null); // Clear any error messages
+
+            // If needs unmute, clicking enables audio
+            if (needsUnmute && video.muted) {
+              video.muted = false;
+              setMuted(false);
+              setNeedsUnmute(false);
+              return;
+            }
+
             if (video.paused && streaming) {
               video.play().then(() => {
                 setIsPlaying(true);
@@ -217,6 +241,14 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
       {streaming && !isPlaying && (
         <div className="hls-player-status">
           <div className="status-badge loading">Click video to play</div>
+        </div>
+      )}
+
+      {streaming && isPlaying && needsUnmute && (
+        <div className="hls-player-status">
+          <div className="status-badge loading" style={{ backgroundColor: '#ff9800' }}>
+            Click video or adjust volume slider to enable audio
+          </div>
         </div>
       )}
 
@@ -245,6 +277,12 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
               setVolume(newVolume);
               if (videoRef.current) {
                 videoRef.current.volume = newVolume;
+                // If adjusting volume, unmute the video
+                if (needsUnmute || videoRef.current.muted) {
+                  videoRef.current.muted = false;
+                  setMuted(false);
+                  setNeedsUnmute(false);
+                }
               }
               if (newVolume === 0) {
                 setMuted(true);
