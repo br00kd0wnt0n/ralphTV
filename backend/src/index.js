@@ -251,7 +251,7 @@ app.put('/schedule/:channel/:week/:day', authMiddleware, async (req, res) => {
       broadcast(`schedule:${channel}:${week}:${day}`, { doc: { version: row.version, items } });
       return res.json({ version: row.version, items, playbackMode: row.playback_mode, playStart: row.play_start });
     } catch (e) {
-      await pool.query('rollback');
+      await client.query('rollback');
       throw e;
     } finally { client.release(); }
   } catch (e) {
@@ -302,7 +302,7 @@ app.patch('/schedule/:channel/:week/:day', authMiddleware, async (req, res) => {
       broadcast(`schedule:${channel}:${week}:${day}`, { doc: { version: row.version, items } });
       return res.json({ version: row.version, items, playbackMode: row.playback_mode, playStart: row.play_start });
     } catch (e) {
-      await pool.query('rollback');
+      await client.query('rollback');
       throw e;
     } finally { client.release(); }
   } catch (e) {
@@ -332,7 +332,7 @@ app.post('/assets/:id/tags', authMiddleware, async (req, res) => {
       await client.query('commit');
       return res.json({ ok: true, tags });
     } catch (e) {
-      await pool.query('rollback');
+      await client.query('rollback');
       throw e;
     } finally { client.release(); }
   } catch (e) {
@@ -443,7 +443,14 @@ app.get('/assets/:id/url', authMiddleware, async (req, res) => {
 
     const cmd = new GetObjectCommand({ Bucket: process.env.S3_BUCKET_UPLOADS, Key: key });
     const url = await getSignedUrl(s3, cmd, { expiresIn: (parseInt(process.env.PRESIGN_TTL_MINUTES || '10', 10)) * 60 });
-    return res.json({ url, normalized: useNormalized });
+    return res.json({
+      url,
+      normalized: useNormalized,
+      normStatus: rows[0].norm_status,
+      s3Key: rows[0].s3_key,
+      s3KeyNorm: rows[0].s3_key_norm,
+      mimeType: rows[0].mime_type
+    });
   } catch (e) {
     console.error('asset url error', e);
     return res.status(500).json({ message: 'Server error' });
@@ -561,14 +568,14 @@ app.get('/feed/:channel/:week/:day/playlist', authMiddleware, async (req, res) =
             const cmd = new GetObjectCommand({ Bucket: process.env.S3_BUCKET_UPLOADS, Key: key });
             const url = await getSignedUrl(s3, cmd, { expiresIn: (parseInt(process.env.PRESIGN_TTL_MINUTES || '10', 10)) * 60 });
             console.log(`==> Playlist item assetId=${it.assetId}: normStatus=${it.normStatus}, s3KeyNorm=${it.s3KeyNorm ? 'set' : 'null'}, useNormalized=${useNormalized}`);
-            return { assetId: it.assetId, vimeoId: it.vimeoId, durationSec: it.durationSec, url, normalized: useNormalized };
+            return { assetId: it.assetId, vimeoId: it.vimeoId, durationSec: it.durationSec, url, normalized: useNormalized, normStatus: it.normStatus };
           } catch {
-            return { assetId: it.assetId, vimeoId: it.vimeoId, durationSec: it.durationSec };
+            return { assetId: it.assetId, vimeoId: it.vimeoId, durationSec: it.durationSec, normStatus: it.normStatus };
           }
         }));
         return res.json({ playbackMode: row.playback_mode || 'loop', playStart: row.play_start || '00:00', items: enriched });
       }
-      return res.json({ playbackMode: row.playback_mode || 'loop', playStart: row.play_start || '00:00', items: base.map(({ s3Key, s3KeyNorm, normStatus, ...rest }) => rest) });
+      return res.json({ playbackMode: row.playback_mode || 'loop', playStart: row.play_start || '00:00', items: base.map(({ s3Key, s3KeyNorm, ...rest }) => rest) });
     } finally { client.release(); }
   } catch (e) {
     console.error('feed playlist error', e);
