@@ -198,36 +198,6 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
             }
           }}
         />
-        <div className="hls-player-controls">
-          <button
-            className="volume-button"
-            onClick={() => setMuted(!muted)}
-            title={muted ? "Unmute" : "Mute"}
-          >
-            {muted ? "🔇" : "🔊"}
-          </button>
-          <input
-            type="range"
-            min="0"
-            max="1"
-            step="0.01"
-            value={volume}
-            onChange={(e) => {
-              const newVolume = parseFloat(e.target.value);
-              setVolume(newVolume);
-              if (videoRef.current) {
-                videoRef.current.volume = newVolume;
-              }
-              if (newVolume === 0) {
-                setMuted(true);
-              } else if (muted) {
-                setMuted(false);
-              }
-            }}
-            className="volume-slider"
-            title="Volume"
-          />
-        </div>
       </div>
 
       {!streaming && !error && (
@@ -260,6 +230,29 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
           ) : (
             <span style={{ color: '#d32f2f' }}>No relay configured</span>
           )}
+        </div>
+        <div className="hls-player-volume">
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            value={volume}
+            onChange={(e) => {
+              const newVolume = parseFloat(e.target.value);
+              setVolume(newVolume);
+              if (videoRef.current) {
+                videoRef.current.volume = newVolume;
+              }
+              if (newVolume === 0) {
+                setMuted(true);
+              } else if (muted) {
+                setMuted(false);
+              }
+            }}
+            className="volume-slider"
+            title="Volume"
+          />
         </div>
       </div>
     </div>

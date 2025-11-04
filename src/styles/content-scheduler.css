@@ -298,7 +298,7 @@
 .streamer-controls-header {
   background: var(--bg-tertiary);
   color: var(--text-primary);
-  padding: 10px 14px;
+  padding: 8px 14px;
   font-weight: 600;
   font-size: 10px;
   text-transform: uppercase;
@@ -313,9 +313,9 @@
 }
 
 .streamer-controls-content {
-  padding: 12px 14px;
+  padding: 8px 14px;
   display: flex;
-  gap: 20px;
+  gap: 16px;
   align-items: flex-start;
   justify-content: space-between;
 }
@@ -324,7 +324,7 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
 }
 
 .streamer-status-row {
@@ -370,7 +370,7 @@
 .streamer-now-playing {
   font-size: 10px;
   color: var(--text-secondary);
-  padding: 6px 8px;
+  padding: 4px 8px;
   background: var(--bg-primary);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
@@ -379,7 +379,7 @@
 .streamer-error {
   color: #ff4444;
   font-size: 10px;
-  padding: 6px 8px;
+  padding: 4px 8px;
   background: rgba(255, 68, 68, 0.1);
   border: 1px solid rgba(255, 68, 68, 0.3);
   border-radius: var(--radius-sm);
@@ -388,7 +388,7 @@
 .streamer-controls-right {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 5px;
   min-width: 140px;
 }
 
@@ -396,7 +396,7 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 8px 10px;
+  padding: 6px 8px;
   background: var(--bg-primary);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
@@ -422,7 +422,7 @@
   background: var(--bg-secondary);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-sm);
-  padding: 10px;
+  padding: 8px 10px;
   display: flex;
   gap: 10px;
   align-items: center;
@@ -435,9 +435,9 @@
 .on-air-badge {
   background: var(--brand-pink);
   color: white;
-  padding: 4px 12px;
+  padding: 3px 10px;
   font-weight: bold;
-  font-size: 14px;
+  font-size: 13px;
   border-top: 2px solid rgba(255,255,255,0.3);
   border-left: 2px solid rgba(255,255,255,0.3);
   border-right: 2px solid rgba(0,0,0,0.3);
@@ -469,7 +469,7 @@
 .on-air-progress {
   font-size: 10px;
   color: var(--text-secondary);
-  margin-top: 4px;
+  margin-top: 2px;
   font-weight: normal;
 }
 

@@ -74,13 +74,14 @@
 }
 
 .hls-player-info {
-  padding: 10px 14px;
+  padding: 8px 14px;
   background: var(--bg-primary);
   border-top: 1px solid var(--border-default);
   margin: 0;
   display: flex;
-  gap: 8px;
+  gap: 16px;
   align-items: center;
+  justify-content: space-between;
 }
 
 .stream-url-info {
@@ -92,67 +93,57 @@
   white-space: nowrap;
 }
 
-/* Volume Controls */
-.hls-player-controls {
-  position: absolute;
-  bottom: 8px;
-  right: 8px;
+/* Volume Control in Footer */
+.hls-player-volume {
   display: flex;
   align-items: center;
-  gap: 8px;
-  background: rgba(0, 0, 0, 0.7);
-  padding: 6px 10px;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: 2px;
-}
-
-.volume-button {
-  background: none;
-  border: none;
-  color: white;
-  font-size: 16px;
-  cursor: pointer;
-  padding: 0;
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0.8;
-  transition: opacity 0.2s;
-}
-
-.volume-button:hover {
-  opacity: 1;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .volume-slider {
-  width: 80px;
-  height: 4px;
+  width: 100px;
+  height: 3px;
   -webkit-appearance: none;
   appearance: none;
-  background: rgba(255, 255, 255, 0.3);
+  background: var(--bg-elevated);
   outline: none;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  cursor: pointer;
 }
 
 .volume-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 12px;
-  height: 12px;
-  background: var(--brand-teal);
+  width: 10px;
+  height: 10px;
+  background: var(--brand-pink);
   cursor: pointer;
   border-radius: 50%;
+  box-shadow: var(--glow-pink);
+  transition: all 0.15s ease;
+}
+
+.volume-slider::-webkit-slider-thumb:hover {
+  background: #ff0099;
+  box-shadow: var(--glow-pink-strong);
 }
 
 .volume-slider::-moz-range-thumb {
-  width: 12px;
-  height: 12px;
-  background: var(--brand-teal);
+  width: 10px;
+  height: 10px;
+  background: var(--brand-pink);
   cursor: pointer;
   border-radius: 50%;
   border: none;
+  box-shadow: var(--glow-pink);
+  transition: all 0.15s ease;
+}
+
+.volume-slider::-moz-range-thumb:hover {
+  background: #ff0099;
+  box-shadow: var(--glow-pink-strong);
 }
 
 /* Responsive adjustments */
@@ -165,13 +156,7 @@
     max-height: 240px;
   }
 
-  .hls-player-controls {
-    bottom: 4px;
-    right: 4px;
-    padding: 4px 8px;
-  }
-
   .volume-slider {
-    width: 60px;
+    width: 80px;
   }
 }
