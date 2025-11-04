@@ -58,7 +58,8 @@ else
 fi
 
 # Initialize status as not streaming
-echo '{"streaming":false}' > /tmp/api/status.json
+TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+echo "{\"streaming\":false,\"lastUpdated\":\"$TIMESTAMP\"}" > /tmp/api/status.json
 
 echo "==> Generating nginx config..."
 echo "==> RELAY_HTTP_PORT=${RELAY_HTTP_PORT}"
