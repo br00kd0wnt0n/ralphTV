@@ -6,7 +6,7 @@
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-md);
   overflow: hidden;
-  width: 280px;
+  width: 240px;
   max-width: 100%;
   flex: 0 0 auto;
   display: flex;
