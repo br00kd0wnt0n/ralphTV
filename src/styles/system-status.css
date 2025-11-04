@@ -1,0 +1,142 @@
+/* System Status Component Styles */
+
+.system-status-container {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+  width: 280px;
+  max-width: 100%;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.system-status-header {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  padding: 10px 14px;
+  font-weight: 600;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.system-status-header h4 {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.system-status-content {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+}
+
+.system-health-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.health-label {
+  font-size: 10px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.health-value {
+  font-size: 14px;
+  color: var(--brand-pink);
+  font-weight: 600;
+  font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+}
+
+.service-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.service-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px 8px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  transition: all 0.15s ease;
+}
+
+.service-item:hover {
+  border-color: var(--border-default);
+}
+
+.service-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-indicator {
+  font-size: 14px;
+  line-height: 1;
+  font-weight: bold;
+}
+
+.status-indicator.status-online {
+  color: #4caf50;
+  text-shadow: 0 0 8px rgba(76, 175, 80, 0.6);
+}
+
+.status-indicator.status-offline {
+  color: var(--text-tertiary);
+}
+
+.status-indicator.status-error {
+  color: #ff9800;
+  text-shadow: 0 0 8px rgba(255, 152, 0, 0.6);
+}
+
+.status-indicator.status-unknown {
+  color: var(--text-tertiary);
+}
+
+.service-name {
+  font-size: 11px;
+  color: var(--text-primary);
+  font-weight: 600;
+  flex: 1;
+}
+
+.service-message {
+  font-size: 9px;
+  color: var(--text-secondary);
+  padding-left: 22px;
+}
+
+.last-check {
+  font-size: 9px;
+  color: var(--text-tertiary);
+  text-align: center;
+  padding-top: 4px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .system-status-container {
+    width: 100%;
+    max-width: 280px;
+  }
+}

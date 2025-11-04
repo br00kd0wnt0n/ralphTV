@@ -24,6 +24,7 @@ import PreviewPane from './PreviewPane';
 import PlayheadIndicator from './PlayheadIndicator';
 import HlsPlayer from './HlsPlayer';
 import VolumeVisualizer from './VolumeVisualizer';
+import SystemStatus from './SystemStatus';
 
 export default function ContentScheduler() {
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -238,7 +239,7 @@ export default function ContentScheduler() {
       <OnAirTile assetMap={assetMap} />
       </div>
 
-      {/* Preview Panel Container - HLS Player, Volume Visualizer, and Asset Preview */}
+      {/* Preview Panel Container - HLS Player, Volume Visualizer, Asset Preview, and System Status */}
       <div className="preview-panel-container">
         {CONFIG.RELAY_BASE_URL && (
           <HlsPlayer onVideoReady={(video) => setLivestreamVideo(video)} />
@@ -249,6 +250,7 @@ export default function ContentScheduler() {
           onClose={() => setSelectedAssetId(null)}
           categories={categories}
         />
+        <SystemStatus />
       </div>
 
       <DragDropContext onDragEnd={onDragEnd}>

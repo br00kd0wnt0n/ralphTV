@@ -105,32 +105,34 @@ export default function OnAirTile({ assetMap }: { assetMap: Map<string, Asset> }
 
   return (
     <div className="on-air-tile">
-      <div className={`on-air-badge ${isOnAir ? '' : 'off-air'}`}>
+      <div className={`on-air-tile-header ${isOnAir ? 'on-air' : 'off-air'}`}>
         {isOnAir ? 'ON AIR' : 'OFF AIR'}
       </div>
-      <div className="on-air-info">
-        <div>{name}</div>
-        <div className="on-air-progress">Elapsed {formatDuration(elapsed)} · Remaining {formatDuration(remaining)}</div>
-        <div className="on-air-progress">Next: {nextName}</div>
-        {CONFIG.RELAY_BASE_URL && (
-          <div className="on-air-progress" style={{ marginTop: 4, color: isOnAir ? 'var(--brand-teal)' : '#888', fontWeight: 'bold' }}>
-            {destinations.length > 0 ? (
-              <>
-                Via Relay → {destinations.map((d, i) => (
-                  <span key={i} style={{ textTransform: 'capitalize' }}>
-                    {i > 0 && ', '}
-                    {d}
-                  </span>
-                ))}
-              </>
-            ) : (
-              'Relay: No destinations'
-            )}
-            {!relayStreaming && streamerRunning && ' (waiting for stream...)'}
-          </div>
-        )}
+      <div className="on-air-tile-content">
+        <div className="on-air-info">
+          <div className="on-air-now-playing">{name}</div>
+          <div className="on-air-progress">Elapsed {formatDuration(elapsed)} · Remaining {formatDuration(remaining)}</div>
+          <div className="on-air-progress">Next: {nextName}</div>
+          {CONFIG.RELAY_BASE_URL && (
+            <div className="on-air-relay-info" style={{ color: isOnAir ? 'var(--brand-teal)' : '#888' }}>
+              {destinations.length > 0 ? (
+                <>
+                  Via Relay → {destinations.map((d, i) => (
+                    <span key={i} style={{ textTransform: 'capitalize' }}>
+                      {i > 0 && ', '}
+                      {d}
+                    </span>
+                  ))}
+                </>
+              ) : (
+                'Relay: No destinations'
+              )}
+              {!relayStreaming && streamerRunning && ' (waiting for stream...)'}
+            </div>
+          )}
+        </div>
+        {error && <div style={{ color: '#d32f2f', fontSize: 10 }}>{error}</div>}
       </div>
-      {error && <div style={{ color: '#d32f2f', fontSize: 10 }}>{error}</div>}
     </div>
   );
 }

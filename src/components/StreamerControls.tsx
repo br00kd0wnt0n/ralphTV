@@ -69,11 +69,11 @@ export default function StreamerControls({
         </div>
         <div className="streamer-controls-right">
           <div className="streamer-stat">
-            <span className="streamer-stat-label">Session Total:</span>
+            <span className="streamer-stat-label">Session:</span>
             <span className="streamer-stat-value">{formatDuration(sessionSec)}</span>
           </div>
           <div className="streamer-stat">
-            <span className="streamer-stat-label">Week Total:</span>
+            <span className="streamer-stat-label">Week:</span>
             <span className="streamer-stat-value">{formatDuration(weekTotalSec)}</span>
           </div>
         </div>
