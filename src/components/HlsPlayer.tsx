@@ -126,8 +126,8 @@ export default function HlsPlayer() {
         video.play().then(() => {
           setIsPlaying(true);
         }).catch((e) => {
-          console.warn('Autoplay failed:', e);
-          setError('Click video to start playback');
+          console.warn('Autoplay blocked - waiting for user interaction:', e);
+          // Don't show error, browser requires user interaction
         });
       });
 
@@ -147,8 +147,8 @@ export default function HlsPlayer() {
         video.play().then(() => {
           setIsPlaying(true);
         }).catch((e) => {
-          console.warn('Autoplay failed:', e);
-          setError('Click video to start playback');
+          console.warn('Autoplay blocked - waiting for user interaction:', e);
+          // Don't show error, browser requires user interaction
         });
       });
       video.addEventListener('error', () => {
@@ -178,30 +178,32 @@ export default function HlsPlayer() {
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}
           onClick={(e) => {
-            // Allow click to play if autoplay was blocked
+            // Allow click to play if autoplay was blocked or video is paused
             const video = e.currentTarget;
+            setError(null); // Clear any error messages
             if (video.paused && streaming) {
-              video.play();
+              video.play().then(() => {
+                setIsPlaying(true);
+              }).catch((err) => {
+                console.warn('Manual play failed:', err);
+              });
+            } else if (!video.paused && streaming) {
+              // If video is playing, clicking pauses it
+              video.pause();
             }
           }}
         />
       </div>
 
-      {!streaming && !error && (
+      {!streaming && (
         <div className="hls-player-status">
           <div className="status-badge loading">Waiting for stream...</div>
         </div>
       )}
 
-      {streaming && !isPlaying && !error && (
+      {streaming && !isPlaying && (
         <div className="hls-player-status">
-          <div className="status-badge loading">Loading stream...</div>
-        </div>
-      )}
-
-      {error && (
-        <div className="hls-player-status">
-          <div className="status-badge error">{error}</div>
+          <div className="status-badge loading">Click video to play</div>
         </div>
       )}
 
