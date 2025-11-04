@@ -68,12 +68,20 @@ http {
     location /api/destinations {
       default_type application/json;
       alias /tmp/api/destinations.json;
+      # Explicit CORS for API endpoints
+      add_header Access-Control-Allow-Origin "*" always;
+      add_header Access-Control-Allow-Methods "GET, HEAD, OPTIONS" always;
+      add_header Access-Control-Allow-Headers "Origin, X-Requested-With, Content-Type, Accept" always;
       add_header Cache-Control "no-cache" always;
     }
 
     location /api/status {
       default_type application/json;
       alias /tmp/api/status.json;
+      # Explicit CORS for API endpoints
+      add_header Access-Control-Allow-Origin "*" always;
+      add_header Access-Control-Allow-Methods "GET, HEAD, OPTIONS" always;
+      add_header Access-Control-Allow-Headers "Origin, X-Requested-With, Content-Type, Accept" always;
       add_header Cache-Control "no-cache" always;
     }
 
