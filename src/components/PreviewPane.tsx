@@ -58,7 +58,7 @@ export default function PreviewPane({
 
       <div ref={containerRef} className="preview-player" style={{ background: '#000', minHeight: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         {!asset && (
-          <div style={{ color: '#888', fontSize: 14 }}>
+          <div style={{ color: '#808080', fontSize: 12 }}>
             Select an asset to preview
           </div>
         )}
@@ -96,9 +96,10 @@ export default function PreviewPane({
                     height: 10,
                     borderRadius: '50%',
                     background: category.color,
-                    border: '1px solid rgba(0,0,0,0.3)',
+                    border: '1px solid rgba(255,255,255,0.3)',
                     display: 'inline-block',
-                    flexShrink: 0
+                    flexShrink: 0,
+                    boxShadow: `0 0 8px ${category.color}50`
                   }}
                 />
                 {category.name}

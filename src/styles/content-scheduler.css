@@ -145,11 +145,18 @@
   transform: translateY(-1px);
 }
 
-/* Library items - set width for wrapping layout */
+/* Pink color when dragging */
+.content-item.is-dragging,
+.scheduled-item.is-dragging {
+  border-color: var(--brand-pink);
+  box-shadow: var(--glow-pink-strong);
+  opacity: 0.8;
+}
+
+/* Library items - standardized width for consistent layout */
 .content-item {
-  min-width: 200px;
-  max-width: 280px;
-  flex: 0 1 auto;
+  width: 240px;
+  flex: 0 0 240px;
 }
 
 /* Scheduled items in day columns */
@@ -184,20 +191,17 @@
   border-bottom: 2px solid var(--border-light);
 }
 
-/* Category color coding with brand colors - Enhanced for dark theme */
-.content-item.video,
+/* Category color coding for scheduled items only - Enhanced for dark theme */
 .scheduled-item.video {
   border-left: 3px solid var(--brand-teal);
   box-shadow: inset 3px 0 8px rgba(49, 189, 191, 0.15);
 }
 
-.content-item.audio,
 .scheduled-item.audio {
   border-left: 3px solid var(--brand-pink);
   box-shadow: inset 3px 0 8px rgba(235, 0, 139, 0.15);
 }
 
-.content-item.unknown,
 .scheduled-item.unknown {
   border-left: 3px solid var(--brand-yellow);
   box-shadow: inset 3px 0 8px rgba(251, 192, 0, 0.15);
@@ -268,24 +272,24 @@
 
 /* Streamer controls */
 .streamer-controls {
-  background: var(--win95-face);
-  border-top: 2px solid var(--border-light);
-  border-left: 2px solid var(--border-light);
-  border-right: 2px solid var(--border-dark);
-  border-bottom: 2px solid var(--border-dark);
-  padding: 8px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
   display: flex;
-  gap: 6px;
+  gap: 8px;
   align-items: center;
   flex-wrap: nowrap;
   flex: 0 0 auto;
   min-width: 250px;
+  box-shadow: var(--shadow-md);
 }
 
 .streamer-controls h3 {
   margin: 0;
-  font-size: 12px;
-  color: black;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -371,29 +375,27 @@
 
 /* Playback controls (per-day) */
 .day-playback-controls {
-  padding: 6px 4px;
-  background: var(--bg-secondary);
-  border-top: 2px solid var(--border-dark);
-  border-left: 2px solid var(--border-dark);
-  border-right: 2px solid var(--border-light);
-  border-bottom: 2px solid var(--border-light);
-  font-size: 9px;
-  margin-top: 8px;
+  padding: 10px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  margin-top: 10px;
 }
 
 .day-playback-controls label {
   display: block;
-  margin-bottom: 3px;
-  font-weight: bold;
-  color: black;
-  font-size: 9px;
+  margin-bottom: 4px;
+  font-weight: 500;
+  color: var(--text-primary);
+  font-size: 10px;
 }
 
 .day-playback-controls select,
 .day-playback-controls input {
   width: 100%;
-  font-size: 9px;
-  margin-bottom: 4px;
+  font-size: 10px;
+  margin-bottom: 6px;
 }
 
 /* Preview Panel Container - HLS Player and Asset Preview */
@@ -408,43 +410,44 @@
 .asset-preview-panel {
   width: 360px;
   max-height: 600px;
-  background: var(--win95-face);
-  border-top: 2px solid var(--border-light);
-  border-left: 2px solid var(--border-light);
-  border-right: 2px solid var(--border-dark);
-  border-bottom: 2px solid var(--border-dark);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
   display: flex;
   flex-direction: column;
   overflow: hidden;
   flex: 0 0 auto;
+  box-shadow: var(--shadow-md);
 }
 
 .preview-header {
-  background: linear-gradient(90deg, var(--brand-teal) 0%, var(--brand-pink) 100%);
-  color: white;
-  padding: 4px 6px;
-  font-size: 11px;
-  font-weight: bold;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  padding: 10px 14px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   flex-shrink: 0;
   user-select: none;
+  border-bottom: 1px solid var(--border-default);
 }
 
 .preview-header h4 {
   margin: 0;
-  font-size: 11px;
-  color: white;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-primary);
 }
 
 .preview-player {
   flex-shrink: 0;
-  border-top: 2px solid var(--border-dark);
-  border-left: 2px solid var(--border-dark);
-  border-right: 2px solid var(--border-light);
-  border-bottom: 2px solid var(--border-light);
-  margin: 8px;
+  border: 1px solid var(--border-subtle);
+  margin: 0;
+  background: #000;
 }
 
 .preview-player video,
@@ -454,11 +457,11 @@
 }
 
 .preview-metadata {
-  padding: 8px;
+  padding: 14px;
   overflow-y: auto;
   flex: 1;
-  font-size: 10px;
-  color: black;
+  font-size: 11px;
+  color: var(--text-primary);
 }
 
 .metadata-row {
@@ -478,6 +481,7 @@
 .metadata-row span {
   flex: 1;
   word-break: break-word;
+  color: var(--text-primary);
 }
 
 .tags-list {
@@ -488,15 +492,12 @@
 }
 
 .tag-badge {
-  background: var(--bg-secondary);
-  border-top: 1px solid var(--border-dark);
-  border-left: 1px solid var(--border-dark);
-  border-right: 1px solid var(--border-light);
-  border-bottom: 1px solid var(--border-light);
-  padding: 2px 6px;
-  font-size: 9px;
-  color: white;
-  border-radius: 2px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  padding: 3px 8px;
+  font-size: 10px;
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
 }
 
 /* Playhead indicator - Ralph Pink with Soft Glow */

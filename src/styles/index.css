@@ -198,7 +198,7 @@ h1, h2, h3, h4, h5, h6 {
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px;
-  background: var(--bg-secondary);
+  background: linear-gradient(90deg, var(--brand-pink) 0%, var(--brand-teal) 100%);
   border-bottom: 1px solid var(--border-default);
   margin-bottom: 0;
 }
