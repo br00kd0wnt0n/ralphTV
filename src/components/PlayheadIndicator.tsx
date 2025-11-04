@@ -66,21 +66,45 @@ export default function PlayheadIndicator({
   useEffect(() => {
     if (!playhead) return;
 
+    const updatePosition = () => {
+      const scheduleGrid = document.querySelector('.schedule-grid');
+      if (!scheduleGrid) return;
+
+      const dayColumns = scheduleGrid.querySelectorAll('.schedule-day');
+      const dayIndex = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].indexOf(playhead.day);
+      const dayColumn = dayColumns[dayIndex] as HTMLElement;
+
+      if (dayColumn) {
+        const gridRect = scheduleGrid.getBoundingClientRect();
+        const columnRect = dayColumn.getBoundingClientRect();
+        const left = columnRect.left - gridRect.left;
+        const width = columnRect.width - 8;
+        setLeftPosition(left + 4);
+        setColumnWidth(width);
+      }
+    };
+
+    // Initial position calculation
+    updatePosition();
+
+    // Update position on window resize
+    window.addEventListener('resize', updatePosition);
+
+    // Also set up a resize observer for the schedule grid
     const scheduleGrid = document.querySelector('.schedule-grid');
-    if (!scheduleGrid) return;
+    let resizeObserver: ResizeObserver | null = null;
 
-    const dayColumns = scheduleGrid.querySelectorAll('.schedule-day');
-    const dayIndex = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].indexOf(playhead.day);
-    const dayColumn = dayColumns[dayIndex] as HTMLElement;
-
-    if (dayColumn) {
-      const gridRect = scheduleGrid.getBoundingClientRect();
-      const columnRect = dayColumn.getBoundingClientRect();
-      const left = columnRect.left - gridRect.left;
-      const width = columnRect.width - 8;
-      setLeftPosition(left + 4);
-      setColumnWidth(width);
+    if (scheduleGrid) {
+      resizeObserver = new ResizeObserver(updatePosition);
+      resizeObserver.observe(scheduleGrid);
     }
+
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+      }
+    };
   }, [playhead?.day]);
 
   if (!playhead || leftPosition === null) return null;

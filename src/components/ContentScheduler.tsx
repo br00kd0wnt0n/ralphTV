@@ -234,8 +234,7 @@ export default function ContentScheduler() {
     <div className="content-scheduler container">
       {/* Status Boxes under header */}
       <div className="status-boxes-container">
-      <WeekSummary schedule={schedule} assetMap={assetMap} />
-      <StreamerControls assetMap={assetMap} />
+      <StreamerControls assetMap={assetMap} schedule={schedule} />
       <OnAirTile assetMap={assetMap} />
       </div>
 
