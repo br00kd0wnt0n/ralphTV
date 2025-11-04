@@ -36,6 +36,44 @@ export default function LibraryPanel({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploadItems, setUploadItems] = useState<UploadItem[]>([]);
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [transcodeStatus, setTranscodeStatus] = useState<'idle' | 'checking' | 'processing' | 'success' | 'error'>('idle');
+  const [transcodeMessage, setTranscodeMessage] = useState<string>('');
+
+  const handleCheckAndTranscode = async () => {
+    if (!apiEnabled) return;
+    setTranscodeStatus('checking');
+    setTranscodeMessage('Checking assets...');
+
+    try {
+      const token = localStorage.getItem('token') || CONFIG.API_AUTH_TOKEN;
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+
+      // Trigger reprocess endpoint
+      const response = await fetch(`${CONFIG.API_BASE_URL}/admin/normalize/reprocess`, {
+        method: 'POST',
+        headers,
+      });
+
+      if (!response.ok) throw new Error(`Failed: ${response.status}`);
+
+      const data = await response.json();
+      setTranscodeStatus('success');
+      setTranscodeMessage(data.enqueued > 0 ? `${data.enqueued} queued` : 'All ready!');
+
+      // Reset after 3 seconds
+      setTimeout(() => {
+        setTranscodeStatus('idle');
+        setTranscodeMessage('');
+      }, 3000);
+    } catch (err: any) {
+      setTranscodeStatus('error');
+      setTranscodeMessage('Error');
+      setTimeout(() => {
+        setTranscodeStatus('idle');
+        setTranscodeMessage('');
+      }, 3000);
+    }
+  };
 
   const handleFiles: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
     const files = Array.from(e.target.files || []);
@@ -168,6 +206,23 @@ export default function LibraryPanel({
                     </option>
                   ))}
                 </select>
+              </div>
+
+              <div style={{ borderTop: '1px solid #444', paddingTop: 10, marginTop: 10 }}>
+                <button
+                  className="win95-button"
+                  onClick={handleCheckAndTranscode}
+                  disabled={!apiEnabled || transcodeStatus === 'checking'}
+                  style={{
+                    fontSize: 11,
+                    padding: '6px 12px',
+                    width: '100%',
+                    background: transcodeStatus === 'success' ? 'var(--brand-teal)' : transcodeStatus === 'error' ? 'var(--brand-pink)' : undefined,
+                    color: transcodeStatus === 'success' || transcodeStatus === 'error' ? 'white' : undefined,
+                  }}
+                >
+                  {transcodeStatus === 'idle' ? 'Check + Transcode' : transcodeMessage}
+                </button>
               </div>
             </div>
 
