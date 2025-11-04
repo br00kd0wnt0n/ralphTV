@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ralphTV Web Player</title>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.14"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: #0a0a0a;
+      color: #e0e0e0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      width: 100%;
+    }
+
+    h1 {
+      font-size: 32px;
+      font-weight: 700;
+      margin-bottom: 10px;
+      background: linear-gradient(135deg, #ff006e, #ff4d8f);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .subtitle {
+      color: #888;
+      font-size: 14px;
+      margin-bottom: 30px;
+    }
+
+    .player-wrapper {
+      background: #1a1a1a;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    }
+
+    video {
+      width: 100%;
+      height: auto;
+      display: block;
+      background: #000;
+    }
+
+    .controls {
+      padding: 20px;
+      background: #1a1a1a;
+      border-top: 1px solid #333;
+    }
+
+    .status-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 15px;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #666;
+    }
+
+    .status-dot.live {
+      background: #00ff88;
+      box-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+      animation: pulse 2s infinite;
+    }
+
+    .status-dot.buffering {
+      background: #ffaa00;
+    }
+
+    .status-dot.error {
+      background: #ff0044;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .stream-url {
+      font-size: 11px;
+      color: #666;
+      font-family: 'Courier New', monospace;
+      word-break: break-all;
+    }
+
+    .volume-control {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .volume-control label {
+      font-size: 12px;
+      color: #888;
+    }
+
+    input[type="range"] {
+      flex: 1;
+      max-width: 150px;
+      height: 4px;
+      background: #333;
+      border-radius: 2px;
+      outline: none;
+      -webkit-appearance: none;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 14px;
+      height: 14px;
+      background: #ff006e;
+      cursor: pointer;
+      border-radius: 50%;
+    }
+
+    input[type="range"]::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      background: #ff006e;
+      cursor: pointer;
+      border-radius: 50%;
+      border: none;
+    }
+
+    button {
+      background: #ff006e;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 4px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    button:hover {
+      background: #ff4d8f;
+    }
+
+    button:disabled {
+      background: #444;
+      cursor: not-allowed;
+    }
+
+    .stats {
+      margin-top: 15px;
+      padding-top: 15px;
+      border-top: 1px solid #333;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 10px;
+      font-size: 11px;
+      color: #666;
+    }
+
+    .stat-item {
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .stat-label {
+      color: #888;
+    }
+
+    .stat-value {
+      color: #e0e0e0;
+      font-weight: 600;
+    }
+
+    .click-to-play {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(255, 0, 110, 0.9);
+      color: white;
+      padding: 15px 30px;
+      border-radius: 50px;
+      font-size: 14px;
+      font-weight: 600;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .click-to-play.show {
+      opacity: 1;
+    }
+
+    .video-container {
+      position: relative;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>ralphTV Web Player</h1>
+    <p class="subtitle">Live HLS Stream</p>
+
+    <div class="player-wrapper">
+      <div class="video-container" id="videoContainer">
+        <video id="video" controls></video>
+        <div class="click-to-play" id="clickToPlay">Click to Play</div>
+      </div>
+
+      <div class="controls">
+        <div class="status-bar">
+          <div class="status-indicator">
+            <div class="status-dot" id="statusDot"></div>
+            <span id="statusText">Connecting...</span>
+          </div>
+          <div class="volume-control">
+            <label for="volume">Volume:</label>
+            <input type="range" id="volume" min="0" max="1" step="0.01" value="0.7">
+            <span id="volumeValue">70%</span>
+          </div>
+        </div>
+
+        <div class="stream-url" id="streamUrl">Loading stream URL...</div>
+
+        <div class="stats">
+          <div class="stat-item">
+            <span class="stat-label">Buffer:</span>
+            <span class="stat-value" id="buffer">0s</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Latency:</span>
+            <span class="stat-value" id="latency">0s</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Dropped Frames:</span>
+            <span class="stat-value" id="dropped">0</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Resolution:</span>
+            <span class="stat-value" id="resolution">--</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const STREAM_URL = 'https://relay-production-8ff1.up.railway.app/hls/stream.m3u8';
+
+    const video = document.getElementById('video');
+    const statusDot = document.getElementById('statusDot');
+    const statusText = document.getElementById('statusText');
+    const streamUrlEl = document.getElementById('streamUrl');
+    const volumeSlider = document.getElementById('volume');
+    const volumeValue = document.getElementById('volumeValue');
+    const clickToPlay = document.getElementById('clickToPlay');
+    const videoContainer = document.getElementById('videoContainer');
+
+    // Stats elements
+    const bufferEl = document.getElementById('buffer');
+    const latencyEl = document.getElementById('latency');
+    const droppedEl = document.getElementById('dropped');
+    const resolutionEl = document.getElementById('resolution');
+
+    streamUrlEl.textContent = STREAM_URL;
+
+    function setStatus(status, message) {
+      statusDot.className = 'status-dot ' + status;
+      statusText.textContent = message;
+    }
+
+    function updateStats() {
+      // Buffer level
+      if (video.buffered.length > 0) {
+        const buffered = video.buffered.end(video.buffered.length - 1) - video.currentTime;
+        bufferEl.textContent = buffered.toFixed(1) + 's';
+      }
+
+      // Dropped frames
+      if (video.getVideoPlaybackQuality) {
+        const quality = video.getVideoPlaybackQuality();
+        droppedEl.textContent = quality.droppedVideoFrames;
+      }
+
+      // Resolution
+      if (video.videoWidth && video.videoHeight) {
+        resolutionEl.textContent = video.videoWidth + 'x' + video.videoHeight;
+      }
+    }
+
+    // Volume control
+    video.volume = volumeSlider.value;
+    volumeSlider.addEventListener('input', (e) => {
+      video.volume = e.target.value;
+      volumeValue.textContent = Math.round(e.target.value * 100) + '%';
+    });
+
+    // Click to play
+    let autoplayBlocked = false;
+    videoContainer.addEventListener('click', () => {
+      if (video.paused) {
+        video.play().catch(e => console.warn('Play failed:', e));
+      }
+    });
+
+    video.addEventListener('play', () => {
+      clickToPlay.classList.remove('show');
+    });
+
+    video.addEventListener('pause', () => {
+      if (autoplayBlocked) {
+        clickToPlay.classList.add('show');
+      }
+    });
+
+    // HLS.js setup
+    if (Hls.isSupported()) {
+      const hls = new Hls({
+        enableWorker: true,
+        lowLatencyMode: true,
+        backBufferLength: 90,
+        maxBufferLength: 30,
+        maxMaxBufferLength: 60,
+      });
+
+      hls.loadSource(STREAM_URL);
+      hls.attachMedia(video);
+
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        setStatus('live', 'Stream Ready');
+        video.play().then(() => {
+          setStatus('live', 'Live Streaming');
+        }).catch((e) => {
+          console.warn('Autoplay blocked:', e);
+          setStatus('live', 'Click to Play');
+          clickToPlay.classList.add('show');
+          autoplayBlocked = true;
+        });
+      });
+
+      hls.on(Hls.Events.ERROR, (event, data) => {
+        console.error('HLS error:', data);
+        if (data.fatal) {
+          switch (data.type) {
+            case Hls.ErrorTypes.NETWORK_ERROR:
+              setStatus('error', 'Network Error - Retrying...');
+              setTimeout(() => hls.startLoad(), 3000);
+              break;
+            case Hls.ErrorTypes.MEDIA_ERROR:
+              setStatus('buffering', 'Recovering...');
+              hls.recoverMediaError();
+              break;
+            default:
+              setStatus('error', 'Fatal Error');
+              hls.destroy();
+              break;
+          }
+        }
+      });
+
+      hls.on(Hls.Events.FRAG_BUFFERED, () => {
+        if (video.paused && !autoplayBlocked) {
+          setStatus('buffering', 'Buffering...');
+        }
+      });
+
+      // Update stats every second
+      setInterval(updateStats, 1000);
+
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      // Native HLS support (Safari)
+      video.src = STREAM_URL;
+      video.addEventListener('loadedmetadata', () => {
+        setStatus('live', 'Stream Ready');
+        video.play().then(() => {
+          setStatus('live', 'Live Streaming');
+        }).catch((e) => {
+          console.warn('Autoplay blocked:', e);
+          setStatus('live', 'Click to Play');
+          clickToPlay.classList.add('show');
+          autoplayBlocked = true;
+        });
+      });
+
+      setInterval(updateStats, 1000);
+    } else {
+      setStatus('error', 'HLS not supported in this browser');
+    }
+  </script>
+</body>
+</html>
