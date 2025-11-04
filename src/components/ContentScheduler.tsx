@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult } from 'react-beautiful-dnd';
 import '../styles/content-scheduler.css';
 import '../styles/hls-player.css';
+import '../styles/volume-visualizer.css';
 import type { Day, Asset, ScheduledItem, Category } from '../state/models';
 import { DAYS } from '../state/models';
 import { reorder, makeId, isDay, formatDuration, durationToHeightPx } from '../state/schedule';
@@ -22,6 +23,7 @@ import ScheduleDiagnostics from './ScheduleDiagnostics';
 import PreviewPane from './PreviewPane';
 import PlayheadIndicator from './PlayheadIndicator';
 import HlsPlayer from './HlsPlayer';
+import VolumeVisualizer from './VolumeVisualizer';
 
 export default function ContentScheduler() {
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -36,6 +38,7 @@ export default function ContentScheduler() {
     Monday: { mode: 'loop' }, Tuesday: { mode: 'loop' }, Wednesday: { mode: 'loop' }, Thursday: { mode: 'loop' }, Friday: { mode: 'loop' }, Saturday: { mode: 'loop' }, Sunday: { mode: 'loop' },
   });
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
+  const [livestreamVideo, setLivestreamVideo] = useState<HTMLVideoElement | null>(null);
 
   const assetMap = useMemo(() => new Map(assets.map(a => [a.id, a])), [assets]);
   const [rt, setRt] = useState<RealtimeClient | null>(null);
@@ -236,9 +239,12 @@ export default function ContentScheduler() {
       <OnAirTile assetMap={assetMap} />
       </div>
 
-      {/* Preview Panel Container - HLS Player and Asset Preview side by side */}
+      {/* Preview Panel Container - HLS Player, Volume Visualizer, and Asset Preview */}
       <div className="preview-panel-container">
-        {CONFIG.RELAY_BASE_URL && <HlsPlayer />}
+        {CONFIG.RELAY_BASE_URL && (
+          <HlsPlayer onVideoReady={(video) => setLivestreamVideo(video)} />
+        )}
+        {CONFIG.RELAY_BASE_URL && <VolumeVisualizer audioElement={livestreamVideo} />}
         <PreviewPane
           asset={selectedAssetId ? (assetMap.get(selectedAssetId) || null) : null}
           onClose={() => setSelectedAssetId(null)}

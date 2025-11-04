@@ -3,14 +3,27 @@ import Hls from 'hls.js';
 import { CONFIG } from '../config';
 import { getRelayStatus, checkRelayHealth } from '../api/relay';
 
-export default function HlsPlayer() {
+interface HlsPlayerProps {
+  onVideoReady?: (video: HTMLVideoElement) => void;
+}
+
+export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [streaming, setStreaming] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [relayAvailable, setRelayAvailable] = useState(true);
+  const [muted, setMuted] = useState(false);
+  const [volume, setVolume] = useState(0.7);
   const checkIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Expose video element to parent when ready
+  useEffect(() => {
+    if (videoRef.current && onVideoReady) {
+      onVideoReady(videoRef.current);
+    }
+  }, [onVideoReady]);
 
   // Check relay health on mount
   useEffect(() => {
@@ -173,7 +186,7 @@ export default function HlsPlayer() {
       <div className="hls-player-video">
         <video
           ref={videoRef}
-          muted
+          muted={muted}
           playsInline
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}
@@ -185,6 +198,36 @@ export default function HlsPlayer() {
             }
           }}
         />
+        <div className="hls-player-controls">
+          <button
+            className="volume-button"
+            onClick={() => setMuted(!muted)}
+            title={muted ? "Unmute" : "Mute"}
+          >
+            {muted ? "🔇" : "🔊"}
+          </button>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            value={volume}
+            onChange={(e) => {
+              const newVolume = parseFloat(e.target.value);
+              setVolume(newVolume);
+              if (videoRef.current) {
+                videoRef.current.volume = newVolume;
+              }
+              if (newVolume === 0) {
+                setMuted(true);
+              } else if (muted) {
+                setMuted(false);
+              }
+            }}
+            className="volume-slider"
+            title="Volume"
+          />
+        </div>
       </div>
 
       {!streaming && !error && (
