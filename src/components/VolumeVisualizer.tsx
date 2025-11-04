@@ -53,7 +53,18 @@ export default function VolumeVisualizer({ audioElement, volume = 0.7 }: VolumeV
       document.addEventListener('click', interactionHandler);
       document.addEventListener('keydown', interactionHandler);
 
-      const source = audioContext.createMediaElementSource(audioElement);
+      // Check if MediaElementSource was already created for this element
+      let source;
+      try {
+        source = audioContext.createMediaElementSource(audioElement);
+      } catch (err: any) {
+        if (err.name === 'InvalidStateError') {
+          console.error('[VolumeVisualizer] MediaElementSource already exists for this element. Cannot create visualizer.');
+          setIsActive(false);
+          return () => {};
+        }
+        throw err;
+      }
       const splitter = audioContext.createChannelSplitter(2);
       const analyserLeft = audioContext.createAnalyser();
       const analyserRight = audioContext.createAnalyser();
