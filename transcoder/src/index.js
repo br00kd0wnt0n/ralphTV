@@ -57,14 +57,58 @@ async function downloadToTmp(key) {
   return tmp;
 }
 
+async function hasAudioStream(inPath) {
+  // Probe the file to check if it has an audio stream
+  return new Promise((resolve) => {
+    const p = spawn('ffprobe', [
+      '-v', 'error',
+      '-select_streams', 'a',
+      '-show_entries', 'stream=codec_type',
+      '-of', 'default=noprint_wrappers=1:nokey=1',
+      inPath
+    ]);
+    let stdout = '';
+    p.stdout.on('data', (d) => { stdout += d.toString(); });
+    p.on('exit', (code) => {
+      // If we got output and code 0, audio stream exists
+      resolve(code === 0 && stdout.trim().length > 0);
+    });
+    p.on('error', () => resolve(false));
+  });
+}
+
 async function normalize(inPath) {
   const out = path.join(os.tmpdir(), `ralphtv_norm_${Date.now()}.mp4`);
+
+  // Check if input has audio
+  const hasAudio = await hasAudioStream(inPath);
+  console.log(`==> Input ${hasAudio ? 'HAS' : 'LACKS'} audio stream`);
+
   const args = [
     '-loglevel', 'warning',
     '-i', inPath,
-    // Map all streams - ensure audio is included if present
-    '-map', '0:v:0',
-    '-map', '0:a:0?', // '?' means optional - won't fail if no audio
+  ];
+
+  if (!hasAudio) {
+    // Generate silent audio track if no audio in source
+    console.log('==> Generating silent audio track for consistency');
+    args.push(
+      '-f', 'lavfi',
+      '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000',
+      '-map', '0:v:0',
+      '-map', '1:a:0', // Map audio from the silent source (second input)
+      '-shortest' // Stop when video ends
+    );
+  } else {
+    // Use existing audio
+    args.push(
+      '-map', '0:v:0',
+      '-map', '0:a:0'
+    );
+  }
+
+  // Common encoding settings
+  args.push(
     '-c:v', 'libx264', '-preset', PRESET, '-profile:v', 'high', '-pix_fmt', 'yuv420p',
     '-b:v', VBIT, '-maxrate', VBIT, '-bufsize', '10000k',
     // Exact 1-second keyframes for HLS segmentation (works with short videos)
@@ -76,8 +120,9 @@ async function normalize(inPath) {
     '-vf', `scale=${TARGET_W}:${TARGET_H}:force_original_aspect_ratio=decrease,pad=${TARGET_W}:${TARGET_H}:(ow-iw)/2:(oh-ih)/2:color=black`,
     '-c:a', 'aac', '-b:a', ABIT, '-ar', '48000', '-ac', '2',
     '-movflags', '+faststart',
-    out,
-  ];
+    out
+  );
+
   await new Promise((resolve, reject) => {
     const p = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
     let stderr = '';
