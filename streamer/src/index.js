@@ -413,8 +413,11 @@ async function streamContinuous(items) {
     : (CONFIG.RTMP_TARGET || '');
   const { listPath, toCleanup, allNormalized } = await buildContinuousList(items);
 
+  // Force encode mode if STREAMER_FORCE_ENCODE is set (useful for mixed audio/no-audio playlists)
+  const forceEncode = (process.env.STREAMER_FORCE_ENCODE === 'true');
+
   let args;
-  if (allNormalized) {
+  if (allNormalized && !forceEncode) {
     // COPY MODE: All assets pre-normalized, just stream without re-encoding
     console.log('==> Using COPY MODE (all assets pre-normalized)');
     args = [
@@ -425,12 +428,19 @@ async function streamContinuous(items) {
       '-flvflags', 'no_duration_filesize', '-f', 'flv', '-rtmp_live', 'live', target,
     ];
   } else {
-    // ENCODE MODE: Some assets not normalized, need to encode
-    console.log('==> Using ENCODE MODE (some assets not pre-normalized)');
+    // ENCODE MODE: Some assets not normalized, or forced encode for audio safety
+    const reason = forceEncode ? 'forced via STREAMER_FORCE_ENCODE' : 'some assets not pre-normalized';
+    console.log(`==> Using ENCODE MODE (${reason}) - will add silent audio if needed`);
     const [w, h] = CONFIG.RESOLUTION.split('x').map((n) => parseInt(n, 10));
+
+    // Add silent audio source, use aselect to pick real audio if exists, otherwise silent
     args = [
       '-loglevel', 'info',
       '-re', '-f', 'concat', '-safe', '0', '-i', listPath,
+      '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000',
+      '-filter_complex', '[0:a?][1:a]amerge=inputs=2,pan=stereo|c0<c0+c2|c1<c1+c3[aout]',
+      '-map', '0:v',
+      '-map', '[aout]',
       '-c:v', 'libx264', '-preset', CONFIG.PRESET, '-profile:v', 'high', '-pix_fmt', 'yuv420p',
       '-b:v', CONFIG.VIDEO_BITRATE, '-maxrate', CONFIG.VIDEO_BITRATE, '-bufsize', '10000k',
       '-g', String(CONFIG.GOP),
@@ -440,6 +450,7 @@ async function streamContinuous(items) {
       '-r', String(CONFIG.FPS),
       '-vf', `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`,
       '-c:a', 'aac', '-b:a', CONFIG.AUDIO_BITRATE, '-ar', '48000', '-ac', '2',
+      '-shortest',
       '-flvflags', 'no_duration_filesize', '-f', 'flv', '-rtmp_live', 'live', target,
     ];
   }
