@@ -60,8 +60,11 @@ async function downloadToTmp(key) {
 async function normalize(inPath) {
   const out = path.join(os.tmpdir(), `ralphtv_norm_${Date.now()}.mp4`);
   const args = [
-    '-loglevel', 'error',
+    '-loglevel', 'warning',
     '-i', inPath,
+    // Map all streams - ensure audio is included if present
+    '-map', '0:v:0',
+    '-map', '0:a:0?', // '?' means optional - won't fail if no audio
     '-c:v', 'libx264', '-preset', PRESET, '-profile:v', 'high', '-pix_fmt', 'yuv420p',
     '-b:v', VBIT, '-maxrate', VBIT, '-bufsize', '10000k',
     // Exact 1-second keyframes for HLS segmentation (works with short videos)
@@ -77,8 +80,18 @@ async function normalize(inPath) {
   ];
   await new Promise((resolve, reject) => {
     const p = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    let stderr = '';
+    p.stderr.on('data', (d) => { stderr += d.toString(); });
     p.on('error', reject);
-    p.on('exit', (code) => code === 0 ? resolve() : reject(new Error('ffmpeg exit ' + code)));
+    p.on('exit', (code) => {
+      if (code !== 0) {
+        console.error('==> ffmpeg stderr:', stderr);
+        reject(new Error('ffmpeg exit ' + code));
+      } else {
+        if (stderr) console.log('==> ffmpeg warnings:', stderr);
+        resolve();
+      }
+    });
   });
   return out;
 }
