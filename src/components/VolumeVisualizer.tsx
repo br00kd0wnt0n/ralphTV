@@ -3,156 +3,55 @@ import '../styles/volume-visualizer.css';
 
 interface VolumeVisualizerProps {
   audioElement: HTMLVideoElement | HTMLAudioElement | null;
-  volume?: number; // 0-1 range for playback volume control
 }
 
-export default function VolumeVisualizer({ audioElement, volume = 0.7 }: VolumeVisualizerProps) {
+export default function VolumeVisualizer({ audioElement }: VolumeVisualizerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationFrameRef = useRef<number>();
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserLeftRef = useRef<AnalyserNode | null>(null);
   const analyserRightRef = useRef<AnalyserNode | null>(null);
   const splitterRef = useRef<ChannelSplitterNode | null>(null);
-  const gainNodeRef = useRef<GainNode | null>(null);
   const [isActive, setIsActive] = useState(false);
 
   useEffect(() => {
-    if (!audioElement || !canvasRef.current) {
-      console.log('[VolumeVisualizer] Not ready:', { audioElement: !!audioElement, canvas: !!canvasRef.current });
-      return;
-    }
+    if (!audioElement || !canvasRef.current) return;
 
-    // Check if video has audio tracks
-    const checkAudioTracks = () => {
-      const audioTracks = (audioElement as HTMLVideoElement).audioTracks;
-      const hasAudio = audioTracks && audioTracks.length > 0;
-      console.log('[VolumeVisualizer] Video audio tracks:', {
-        count: audioTracks?.length || 0,
-        hasAudio,
-        readyState: audioElement.readyState,
-        paused: audioElement.paused,
-        currentSrc: audioElement.currentSrc
-      });
-      return hasAudio;
-    };
+    // Create audio context and analyzers
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const source = audioContext.createMediaElementSource(audioElement);
+    const splitter = audioContext.createChannelSplitter(2);
+    const analyserLeft = audioContext.createAnalyser();
+    const analyserRight = audioContext.createAnalyser();
 
-    // Wait for audio tracks to load
-    if (audioElement.readyState < 2) { // HAVE_CURRENT_DATA
-      console.log('[VolumeVisualizer] Waiting for video to load metadata...');
-      const loadedMetadataHandler = () => {
-        console.log('[VolumeVisualizer] Metadata loaded, checking audio tracks...');
-        checkAudioTracks();
-      };
-      audioElement.addEventListener('loadedmetadata', loadedMetadataHandler, { once: true });
-      return () => {
-        audioElement.removeEventListener('loadedmetadata', loadedMetadataHandler);
-      };
-    }
+    analyserLeft.fftSize = 256;
+    analyserRight.fftSize = 256;
+    analyserLeft.smoothingTimeConstant = 0.8;
+    analyserRight.smoothingTimeConstant = 0.8;
 
-    checkAudioTracks();
-    console.log('[VolumeVisualizer] Initializing Web Audio API');
+    // Connect: source -> splitter -> analyzers
+    source.connect(splitter);
+    splitter.connect(analyserLeft, 0); // Left channel
+    splitter.connect(analyserRight, 1); // Right channel
 
-    try {
-      // Create audio context and analyzers
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      console.log('[VolumeVisualizer] AudioContext state:', audioContext.state);
+    // Also connect to destination so audio plays
+    source.connect(audioContext.destination);
 
-      // Resume audio context if suspended (common on mobile/browsers)
-      const resumeAudioContext = () => {
-        if (audioContext.state === 'suspended') {
-          audioContext.resume().then(() => {
-            console.log('[VolumeVisualizer] AudioContext resumed to:', audioContext.state);
-          }).catch((err) => {
-            console.error('[VolumeVisualizer] Failed to resume AudioContext:', err);
-          });
-        }
-      };
+    audioContextRef.current = audioContext;
+    analyserLeftRef.current = analyserLeft;
+    analyserRightRef.current = analyserRight;
+    splitterRef.current = splitter;
+    setIsActive(true);
 
-      // Try to resume immediately
-      resumeAudioContext();
-
-      // Resume on user interaction
-      const interactionHandler = () => {
-        resumeAudioContext();
-        document.removeEventListener('click', interactionHandler);
-        document.removeEventListener('keydown', interactionHandler);
-      };
-      document.addEventListener('click', interactionHandler, { once: true });
-      document.addEventListener('keydown', interactionHandler, { once: true });
-
-      // Resume when video starts playing
-      const playHandler = () => {
-        console.log('[VolumeVisualizer] Video started playing, resuming AudioContext');
-        resumeAudioContext();
-      };
-      audioElement.addEventListener('play', playHandler);
-
-      // Check if MediaElementSource was already created for this element
-      let source;
-      try {
-        source = audioContext.createMediaElementSource(audioElement);
-      } catch (err: any) {
-        if (err.name === 'InvalidStateError') {
-          console.error('[VolumeVisualizer] MediaElementSource already exists for this element. Cannot create visualizer.');
-          setIsActive(false);
-          return () => {};
-        }
-        throw err;
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
       }
-      const splitter = audioContext.createChannelSplitter(2);
-      const analyserLeft = audioContext.createAnalyser();
-      const analyserRight = audioContext.createAnalyser();
-      const gainNode = audioContext.createGain();
-
-      analyserLeft.fftSize = 256;
-      analyserRight.fftSize = 256;
-      analyserLeft.smoothingTimeConstant = 0.8;
-      analyserRight.smoothingTimeConstant = 0.8;
-      gainNode.gain.value = volume;
-
-      // Connect: source -> splitter -> analyzers (for visualization - reads original levels)
-      source.connect(splitter);
-      splitter.connect(analyserLeft, 0); // Left channel
-      splitter.connect(analyserRight, 1); // Right channel
-
-      // Connect: source -> gainNode -> destination (for playback with volume control)
-      source.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-
-      audioContextRef.current = audioContext;
-      analyserLeftRef.current = analyserLeft;
-      analyserRightRef.current = analyserRight;
-      splitterRef.current = splitter;
-      gainNodeRef.current = gainNode;
-      setIsActive(true);
-
-      console.log('[VolumeVisualizer] Web Audio API initialized successfully');
-
-      // Cleanup function
-      return () => {
-        document.removeEventListener('click', interactionHandler);
-        document.removeEventListener('keydown', interactionHandler);
-        audioElement.removeEventListener('play', playHandler);
-        if (animationFrameRef.current) {
-          cancelAnimationFrame(animationFrameRef.current);
-        }
-        if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-          audioContextRef.current.close();
-        }
-      };
-    } catch (error) {
-      console.error('[VolumeVisualizer] Failed to initialize Web Audio API:', error);
-      setIsActive(false);
-      return () => {};
-    }
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        audioContextRef.current.close();
+      }
+    };
   }, [audioElement]);
-
-  // Update gain when volume prop changes
-  useEffect(() => {
-    if (gainNodeRef.current) {
-      gainNodeRef.current.gain.value = volume;
-    }
-  }, [volume]);
 
   useEffect(() => {
     if (!isActive || !canvasRef.current || !analyserLeftRef.current || !analyserRightRef.current) {
@@ -167,7 +66,6 @@ export default function VolumeVisualizer({ audioElement, volume = 0.7 }: VolumeV
     const dataArrayLeft = new Uint8Array(bufferLength);
     const dataArrayRight = new Uint8Array(bufferLength);
 
-    let frameCount = 0;
     const draw = () => {
       if (!analyserLeftRef.current || !analyserRightRef.current) return;
 
@@ -177,15 +75,6 @@ export default function VolumeVisualizer({ audioElement, volume = 0.7 }: VolumeV
       // Calculate average volume for each channel
       const leftVolume = dataArrayLeft.reduce((a, b) => a + b, 0) / bufferLength / 255;
       const rightVolume = dataArrayRight.reduce((a, b) => a + b, 0) / bufferLength / 255;
-
-      // Debug log every 60 frames (roughly once per second at 60fps)
-      if (frameCount++ % 60 === 0) {
-        console.log('[VolumeVisualizer] Audio levels:', {
-          left: leftVolume.toFixed(3),
-          right: rightVolume.toFixed(3),
-          audioContextState: audioContextRef.current?.state
-        });
-      }
 
       // Clear canvas with dark background
       ctx.fillStyle = '#0a0a0a';
@@ -259,20 +148,12 @@ export default function VolumeVisualizer({ audioElement, volume = 0.7 }: VolumeV
     };
   }, [isActive]);
 
-  // Click handler to resume audio context if suspended
-  const handleClick = () => {
-    if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
-      console.log('[VolumeVisualizer] Resuming AudioContext from user click');
-      audioContextRef.current.resume();
-    }
-  };
-
   return (
     <div className="volume-visualizer-container">
       <div className="volume-visualizer-header">
         <h4>Volume Meters</h4>
       </div>
-      <div className="volume-visualizer-canvas-wrapper" onClick={handleClick}>
+      <div className="volume-visualizer-canvas-wrapper">
         <canvas
           ref={canvasRef}
           width={200}

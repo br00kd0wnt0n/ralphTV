@@ -40,7 +40,6 @@ export default function ContentScheduler() {
   });
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [livestreamVideo, setLivestreamVideo] = useState<HTMLVideoElement | null>(null);
-  const [livestreamVolume, setLivestreamVolume] = useState<number>(0.7);
 
   const assetMap = useMemo(() => new Map(assets.map(a => [a.id, a])), [assets]);
   const [rt, setRt] = useState<RealtimeClient | null>(null);
@@ -244,14 +243,9 @@ export default function ContentScheduler() {
       {/* Preview Panel Container - HLS Player, Volume Visualizer, Asset Preview, and System Status */}
       <div className="preview-panel-container">
         {CONFIG.RELAY_BASE_URL && (
-          <HlsPlayer
-            onVideoReady={(video) => setLivestreamVideo(video)}
-            volume={livestreamVolume}
-            onVolumeChange={setLivestreamVolume}
-          />
+          <HlsPlayer onVideoReady={(video) => setLivestreamVideo(video)} />
         )}
-        {/* VolumeVisualizer disabled - breaks audio routing */}
-        {/* {CONFIG.RELAY_BASE_URL && <VolumeVisualizer audioElement={livestreamVideo} volume={livestreamVolume} />} */}
+        {CONFIG.RELAY_BASE_URL && <VolumeVisualizer audioElement={livestreamVideo} />}
         <PreviewPane
           asset={selectedAssetId ? (assetMap.get(selectedAssetId) || null) : null}
           onClose={() => setSelectedAssetId(null)}

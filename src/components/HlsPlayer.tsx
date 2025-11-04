@@ -5,11 +5,9 @@ import { getRelayStatus, checkRelayHealth } from '../api/relay';
 
 interface HlsPlayerProps {
   onVideoReady?: (video: HTMLVideoElement) => void;
-  volume?: number;
-  onVolumeChange?: (volume: number) => void;
 }
 
-export default function HlsPlayer({ onVideoReady, volume = 0.7, onVolumeChange }: HlsPlayerProps) {
+export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -17,6 +15,7 @@ export default function HlsPlayer({ onVideoReady, volume = 0.7, onVolumeChange }
   const [isPlaying, setIsPlaying] = useState(false);
   const [relayAvailable, setRelayAvailable] = useState(true);
   const [muted, setMuted] = useState(false);
+  const [volume, setVolume] = useState(0.7);
   const checkIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Expose video element to parent when ready
@@ -25,13 +24,6 @@ export default function HlsPlayer({ onVideoReady, volume = 0.7, onVolumeChange }
       onVideoReady(videoRef.current);
     }
   }, [onVideoReady]);
-
-  // Set video volume directly
-  useEffect(() => {
-    if (videoRef.current) {
-      videoRef.current.volume = volume;
-    }
-  }, [volume]);
 
   // Check relay health on mount
   useEffect(() => {
@@ -250,10 +242,7 @@ export default function HlsPlayer({ onVideoReady, volume = 0.7, onVolumeChange }
             value={volume}
             onChange={(e) => {
               const newVolume = parseFloat(e.target.value);
-              if (onVolumeChange) {
-                onVolumeChange(newVolume);
-              }
-              // Set video volume directly
+              setVolume(newVolume);
               if (videoRef.current) {
                 videoRef.current.volume = newVolume;
               }
