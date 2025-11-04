@@ -498,6 +498,43 @@ app.delete('/assets/:id', authMiddleware, async (req, res) => {
   }
 });
 
+// Stream action logging
+app.post('/stream-actions/log', authMiddleware, async (req, res) => {
+  const { action } = req.body || {};
+  if (!action || !['start', 'stop', 'restart'].includes(action)) {
+    return res.status(400).json({ message: 'Invalid action' });
+  }
+  const userEmail = req.user?.email || 'unknown';
+  try {
+    await pool.query(
+      'insert into stream_actions (action, user_email) values ($1, $2)',
+      [action, userEmail]
+    );
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error('stream action log error', e);
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
+
+app.get('/stream-actions/last', authMiddleware, async (_req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      select action, user_email, created_at
+      from stream_actions
+      order by created_at desc
+      limit 1
+    `);
+    if (rows.length === 0) {
+      return res.json({ action: null });
+    }
+    return res.json({ action: rows[0] });
+  } catch (e) {
+    console.error('stream action fetch error', e);
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // Feed endpoints
 app.get('/feed/:channel/:week/:day/playlist', authMiddleware, async (req, res) => {
   const { channel, week, day } = req.params;

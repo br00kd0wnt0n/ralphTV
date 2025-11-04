@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { streamerStatus, streamerStart, streamerStop, streamerRestart, streamerTestSignal } from '../api/streamer';
+import { logStreamAction, getLastStreamAction } from '../api/streamActions';
 import { formatDuration } from '../state/schedule';
 import type { Asset, Day, ScheduledItem } from '../state/models';
 import { DAYS } from '../state/models';
@@ -14,6 +15,7 @@ export default function StreamerControls({
   const [running, setRunning] = useState<boolean>(false);
   const [current, setCurrent] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [lastAction, setLastAction] = useState<{ action: string; user_email: string; created_at: string } | null>(null);
 
   async function refresh() {
     try {
@@ -27,7 +29,21 @@ export default function StreamerControls({
     }
   }
 
-  useEffect(() => { refresh(); const t = setInterval(refresh, 10000); return () => clearInterval(t); }, []);
+  async function fetchLastAction() {
+    try {
+      const data = await getLastStreamAction();
+      setLastAction(data.action || null);
+    } catch (e) {
+      console.error('Failed to fetch last stream action:', e);
+    }
+  }
+
+  useEffect(() => {
+    refresh();
+    fetchLastAction();
+    const t = setInterval(refresh, 10000);
+    return () => clearInterval(t);
+  }, []);
 
   const [sessionSec, setSessionSec] = useState<number>(0);
 
@@ -52,9 +68,41 @@ export default function StreamerControls({
             {running ? 'Running' : 'Stopped'}
           </span>
           <div className="streamer-buttons">
-            <button className="btn" onClick={async () => { await streamerStart(); refresh(); }} disabled={running}>Start</button>
-            <button className="btn" onClick={async () => { await streamerStop(); refresh(); }} disabled={!running}>Stop</button>
-            <button className="btn" onClick={async () => { await streamerRestart(); setTimeout(refresh, 1200); }}>Restart</button>
+            <button
+              className="btn"
+              onClick={async () => {
+                await streamerStart();
+                await logStreamAction('start').catch(console.error);
+                refresh();
+                fetchLastAction();
+              }}
+              disabled={running}
+            >
+              Start
+            </button>
+            <button
+              className="btn"
+              onClick={async () => {
+                await streamerStop();
+                await logStreamAction('stop').catch(console.error);
+                refresh();
+                fetchLastAction();
+              }}
+              disabled={!running}
+            >
+              Stop
+            </button>
+            <button
+              className="btn"
+              onClick={async () => {
+                await streamerRestart();
+                await logStreamAction('restart').catch(console.error);
+                setTimeout(refresh, 1200);
+                fetchLastAction();
+              }}
+            >
+              Restart
+            </button>
             <button className="btn" onClick={async () => { await streamerTestSignal(30); refresh(); }}>Test Signal (30s)</button>
           </div>
           <div className="streamer-controls-right">
@@ -74,6 +122,11 @@ export default function StreamerControls({
           </div>
         )}
         {error && <div className="streamer-error">{error}</div>}
+        {lastAction && (
+          <div className="streamer-last-action">
+            Stream {lastAction.action === 'start' ? 'started' : lastAction.action === 'stop' ? 'stopped' : 'restarted'} at {new Date(lastAction.created_at).toLocaleString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZoneName: 'short' })}, by {lastAction.user_email}
+          </div>
+        )}
       </div>
     </div>
   );

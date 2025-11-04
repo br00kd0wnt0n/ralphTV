@@ -395,6 +395,14 @@
   border-radius: var(--radius-sm);
 }
 
+.streamer-last-action {
+  font-size: 9px;
+  color: var(--text-secondary);
+  padding: 4px 10px;
+  font-style: italic;
+  opacity: 0.8;
+}
+
 .streamer-controls-right {
   display: flex;
   flex-direction: row;
