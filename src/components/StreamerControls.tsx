@@ -4,6 +4,8 @@ import { logStreamAction, getLastStreamAction } from '../api/streamActions';
 import { formatDuration } from '../state/schedule';
 import type { Asset, Day, ScheduledItem } from '../state/models';
 import { DAYS } from '../state/models';
+import { getUserFromToken } from '../utils/jwt';
+import { useAuth } from '../auth';
 
 export default function StreamerControls({
   assetMap,
@@ -16,6 +18,9 @@ export default function StreamerControls({
   const [current, setCurrent] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [lastAction, setLastAction] = useState<{ action: string; user_email: string; created_at: string } | null>(null);
+  const [userHovered, setUserHovered] = useState(false);
+  const auth = useAuth();
+  const userInfo = getUserFromToken();
 
   async function refresh() {
     try {
@@ -61,6 +66,21 @@ export default function StreamerControls({
     <div className="streamer-controls-container">
       <div className="streamer-controls-header">
         <h4>Streamer Controls</h4>
+        {userInfo && (
+          <div
+            className="streamer-user-indicator"
+            onMouseEnter={() => setUserHovered(true)}
+            onMouseLeave={() => setUserHovered(false)}
+            onClick={() => {
+              if (userHovered && auth?.logout) {
+                auth.logout();
+                window.location.reload();
+              }
+            }}
+          >
+            {userHovered ? 'Log out' : `(${userInfo.email.split('@')[0]})`}
+          </div>
+        )}
       </div>
       <div className="streamer-controls-content">
         <div className="streamer-controls-main">

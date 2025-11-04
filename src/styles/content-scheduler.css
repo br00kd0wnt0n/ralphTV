@@ -313,12 +313,33 @@
   text-transform: uppercase;
   letter-spacing: 0.8px;
   border-bottom: 1px solid var(--border-default);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .streamer-controls-header h4 {
   margin: 0;
   font-size: 10px;
   font-weight: 600;
+}
+
+.streamer-user-indicator {
+  color: var(--brand-pink);
+  font-size: 9px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 3px;
+  transition: all 0.2s ease;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.streamer-user-indicator:hover {
+  background: var(--brand-pink);
+  color: white;
+  text-shadow: none;
 }
 
 .streamer-controls-content {
