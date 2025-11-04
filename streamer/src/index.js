@@ -78,18 +78,41 @@ function ffmpegArgs(inputUrl, offsetSec = 0, useCopyMode = false) {
   // Encode mode: for non-normalized files with audio/video fallbacks
   const [w, h] = CONFIG.RESOLUTION.split('x').map((n) => parseInt(n, 10));
   const tuneGop = (process.env.STREAMER_TUNE_GOP === 'true');
+
+  // Build video filter chain with optional logo overlay
+  let videoFilter = `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`;
+  const useLogoOverlay = LOGO_ENABLE && LOGO_EXISTS;
+
   const args = [
     '-loglevel', 'info',
     '-re',
     ...(offsetSec > 0 ? ['-ss', String(Math.floor(offsetSec))] : []),
     '-i', inputUrl,
+    // Add logo as input if enabled
+    ...(useLogoOverlay ? ['-i', LOGO_PATH] : []),
     // Add silent audio source as fallback
     '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000',
-    // Map video from input (fallback to test pattern if missing)
-    '-map', '0:v?',
-    // Map audio: prefer real audio, fallback to silent
-    '-map', '0:a?',
-    '-map', '1:a',
+  ];
+
+  // Use filter_complex for logo overlay, otherwise simple -vf
+  if (useLogoOverlay) {
+    const logoInputIndex = 1;
+    const audioInputIndex = 2;
+    // Build complex filter: scale+pad video, scale logo with opacity, overlay in top-right
+    const filterComplex = `[0:v]${videoFilter}[v];[${logoInputIndex}:v]scale=${LOGO_SCALE}:-1,format=rgba,colorchannelmixer=aa=${LOGO_OPACITY}[logo];[v][logo]overlay=W-w-20:20`;
+    args.push('-filter_complex', filterComplex);
+    args.push('-map', '0:a?', '-map', `${audioInputIndex}:a`);
+  } else {
+    // No logo, use simple filter
+    args.push(
+      '-map', '0:v?',
+      '-map', '0:a?',
+      '-map', '1:a',
+      '-vf', videoFilter
+    );
+  }
+
+  args.push(
     '-c:v', 'libx264',
     '-preset', CONFIG.PRESET,
     '-profile:v', 'high',
@@ -100,7 +123,6 @@ function ffmpegArgs(inputUrl, offsetSec = 0, useCopyMode = false) {
     '-g', String(CONFIG.GOP),
     ...(tuneGop ? ['-keyint_min', String(CONFIG.GOP), '-sc_threshold', '0', '-force_key_frames', 'expr:gte(t,n_forced*1)'] : []),
     '-r', String(CONFIG.FPS),
-    '-vf', `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`,
     '-c:a', 'aac',
     '-b:a', CONFIG.AUDIO_BITRATE,
     '-ar', '48000',
@@ -108,8 +130,8 @@ function ffmpegArgs(inputUrl, offsetSec = 0, useCopyMode = false) {
     '-flvflags', 'no_duration_filesize',
     '-f', 'flv',
     '-rtmp_live', 'live',
-    target,
-  ];
+    target
+  );
   return args;
 }
 
@@ -120,6 +142,13 @@ let SESSION_STARTED_AT = null;
 let TEMP_FILES = []; // Track temp files for cleanup
 let KILL_TIMEOUT = null; // Track SIGKILL timeout
 const NORMALIZE = (process.env.STREAMER_NORMALIZE === 'true');
+
+// Logo overlay configuration
+const LOGO_ENABLE = process.env.LOGO_ENABLE === 'true';
+const LOGO_PATH = process.env.LOGO_PATH || '/app/assets/logo.png';
+const LOGO_SCALE = parseInt(process.env.LOGO_SCALE || '200', 10);
+const LOGO_OPACITY = parseFloat(process.env.LOGO_OPACITY || '0.8');
+let LOGO_EXISTS = false;
 
 // Cleanup function with SIGKILL fallback
 async function cleanupStreamer() {
@@ -533,6 +562,20 @@ async function main() {
   if (!CONFIG.API_BASE_URL || !CONFIG.RTMP_TARGET) {
     console.error('Missing API_BASE_URL or RTMP_TARGET');
     process.exit(1);
+  }
+
+  // Check if logo file exists
+  if (LOGO_ENABLE) {
+    try {
+      await fs.access(LOGO_PATH);
+      LOGO_EXISTS = true;
+      console.log(`==> Logo overlay enabled: ${LOGO_PATH} (scale=${LOGO_SCALE}px, opacity=${LOGO_OPACITY})`);
+    } catch {
+      console.warn(`==> Logo overlay enabled but file not found: ${LOGO_PATH}`);
+      console.warn('==> Streaming will continue without logo overlay');
+    }
+  } else {
+    console.log('==> Logo overlay disabled (set LOGO_ENABLE=true to enable)');
   }
 
   // Tiny HTTP server for Railway web mode

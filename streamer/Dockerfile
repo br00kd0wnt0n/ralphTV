@@ -9,10 +9,15 @@ RUN apt-get update && \
 COPY package.json ./
 RUN npm install --omit=dev --no-audit --no-fund
 
-COPY . .
+COPY src ./src
+COPY assets ./assets
 
 ENV NODE_ENV=production \
-    PORT=3001
+    PORT=3001 \
+    LOGO_ENABLE=false \
+    LOGO_PATH=/app/assets/logo.png \
+    LOGO_SCALE=200 \
+    LOGO_OPACITY=0.8
 
 EXPOSE 3001
 
