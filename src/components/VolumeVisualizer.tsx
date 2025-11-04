@@ -3,15 +3,17 @@ import '../styles/volume-visualizer.css';
 
 interface VolumeVisualizerProps {
   audioElement: HTMLVideoElement | HTMLAudioElement | null;
+  volume?: number; // 0-1 range for playback volume control
 }
 
-export default function VolumeVisualizer({ audioElement }: VolumeVisualizerProps) {
+export default function VolumeVisualizer({ audioElement, volume = 0.7 }: VolumeVisualizerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationFrameRef = useRef<number>();
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserLeftRef = useRef<AnalyserNode | null>(null);
   const analyserRightRef = useRef<AnalyserNode | null>(null);
   const splitterRef = useRef<ChannelSplitterNode | null>(null);
+  const gainNodeRef = useRef<GainNode | null>(null);
   const [isActive, setIsActive] = useState(false);
 
   useEffect(() => {
@@ -23,24 +25,28 @@ export default function VolumeVisualizer({ audioElement }: VolumeVisualizerProps
     const splitter = audioContext.createChannelSplitter(2);
     const analyserLeft = audioContext.createAnalyser();
     const analyserRight = audioContext.createAnalyser();
+    const gainNode = audioContext.createGain();
 
     analyserLeft.fftSize = 256;
     analyserRight.fftSize = 256;
     analyserLeft.smoothingTimeConstant = 0.8;
     analyserRight.smoothingTimeConstant = 0.8;
+    gainNode.gain.value = volume;
 
-    // Connect: source -> splitter -> analyzers
+    // Connect: source -> splitter -> analyzers (for visualization - reads original levels)
     source.connect(splitter);
     splitter.connect(analyserLeft, 0); // Left channel
     splitter.connect(analyserRight, 1); // Right channel
 
-    // Also connect to destination so audio plays
-    source.connect(audioContext.destination);
+    // Connect: source -> gainNode -> destination (for playback with volume control)
+    source.connect(gainNode);
+    gainNode.connect(audioContext.destination);
 
     audioContextRef.current = audioContext;
     analyserLeftRef.current = analyserLeft;
     analyserRightRef.current = analyserRight;
     splitterRef.current = splitter;
+    gainNodeRef.current = gainNode;
     setIsActive(true);
 
     return () => {
@@ -52,6 +58,13 @@ export default function VolumeVisualizer({ audioElement }: VolumeVisualizerProps
       }
     };
   }, [audioElement]);
+
+  // Update gain when volume prop changes
+  useEffect(() => {
+    if (gainNodeRef.current) {
+      gainNodeRef.current.gain.value = volume;
+    }
+  }, [volume]);
 
   useEffect(() => {
     if (!isActive || !canvasRef.current || !analyserLeftRef.current || !analyserRightRef.current) {

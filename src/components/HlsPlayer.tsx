@@ -5,9 +5,11 @@ import { getRelayStatus, checkRelayHealth } from '../api/relay';
 
 interface HlsPlayerProps {
   onVideoReady?: (video: HTMLVideoElement) => void;
+  volume?: number;
+  onVolumeChange?: (volume: number) => void;
 }
 
-export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
+export default function HlsPlayer({ onVideoReady, volume = 0.7, onVolumeChange }: HlsPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -15,7 +17,6 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [relayAvailable, setRelayAvailable] = useState(true);
   const [muted, setMuted] = useState(false);
-  const [volume, setVolume] = useState(0.7);
   const checkIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Expose video element to parent when ready
@@ -242,10 +243,10 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
             value={volume}
             onChange={(e) => {
               const newVolume = parseFloat(e.target.value);
-              setVolume(newVolume);
-              if (videoRef.current) {
-                videoRef.current.volume = newVolume;
+              if (onVolumeChange) {
+                onVolumeChange(newVolume);
               }
+              // Note: Don't set videoRef.current.volume - Web Audio API handles playback volume via GainNode
               if (newVolume === 0) {
                 setMuted(true);
               } else if (muted) {
