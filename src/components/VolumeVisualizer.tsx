@@ -22,6 +22,34 @@ export default function VolumeVisualizer({ audioElement, volume = 0.7 }: VolumeV
       return;
     }
 
+    // Check if video has audio tracks
+    const checkAudioTracks = () => {
+      const audioTracks = (audioElement as HTMLVideoElement).audioTracks;
+      const hasAudio = audioTracks && audioTracks.length > 0;
+      console.log('[VolumeVisualizer] Video audio tracks:', {
+        count: audioTracks?.length || 0,
+        hasAudio,
+        readyState: audioElement.readyState,
+        paused: audioElement.paused,
+        currentSrc: audioElement.currentSrc
+      });
+      return hasAudio;
+    };
+
+    // Wait for audio tracks to load
+    if (audioElement.readyState < 2) { // HAVE_CURRENT_DATA
+      console.log('[VolumeVisualizer] Waiting for video to load metadata...');
+      const loadedMetadataHandler = () => {
+        console.log('[VolumeVisualizer] Metadata loaded, checking audio tracks...');
+        checkAudioTracks();
+      };
+      audioElement.addEventListener('loadedmetadata', loadedMetadataHandler, { once: true });
+      return () => {
+        audioElement.removeEventListener('loadedmetadata', loadedMetadataHandler);
+      };
+    }
+
+    checkAudioTracks();
     console.log('[VolumeVisualizer] Initializing Web Audio API');
 
     try {
