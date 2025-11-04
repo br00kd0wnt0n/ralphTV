@@ -40,15 +40,27 @@ export default function LibraryList({
   };
   return (
     <>
-      {assets.map((asset, index) => (
-        <Draggable key={asset.id} draggableId={`asset-${asset.id}`} index={index}>
+      {assets.map((asset, index) => {
+        // Check if asset is ready to use
+        const isReady = asset.type !== 'video' || asset.normStatus === 'ready';
+        const statusText = !isReady ?
+          (asset.normStatus === 'processing' ? ' (Transcoding...)' : ' (Pending transcode)') : '';
+
+        return (
+        <Draggable key={asset.id} draggableId={`asset-${asset.id}`} index={index} isDragDisabled={!isReady}>
           {(provided) => (
             <div
               ref={provided.innerRef}
               {...provided.draggableProps}
               {...provided.dragHandleProps}
               className={`content-item ${asset.type}`}
-              title={asset.name}
+              title={isReady ? asset.name : `${asset.name} - Not ready to use yet`}
+              style={{
+                ...provided.draggableProps.style,
+                opacity: isReady ? 1 : 0.4,
+                cursor: isReady ? 'move' : 'not-allowed',
+                pointerEvents: isReady ? 'auto' : 'none',
+              }}
             >
               {editingId === asset.id ? (
                 <input
@@ -62,11 +74,11 @@ export default function LibraryList({
                 />
               ) : (
                 <div
-                  onClick={() => handleStartEdit(asset)}
-                  style={{ cursor: 'text', marginBottom: 6 }}
-                  title="Click to edit name"
+                  onClick={() => isReady && handleStartEdit(asset)}
+                  style={{ cursor: isReady ? 'text' : 'not-allowed', marginBottom: 6 }}
+                  title={isReady ? "Click to edit name" : "Cannot edit while transcoding"}
                 >
-                  {asset.name}
+                  {asset.name}{statusText}
                 </div>
               )}
               <div className="library-item-meta">
@@ -89,7 +101,8 @@ export default function LibraryList({
             </div>
           )}
         </Draggable>
-      ))}
+        );
+      })}
     </>
   );
 }

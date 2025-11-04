@@ -17,6 +17,7 @@ export type Asset = {
   vimeoReference?: string;
   durationSec?: number;
   categoryId?: string;
+  normStatus?: string; // 'pending' | 'processing' | 'ready' | 'error'
 };
 
 export type Category = {

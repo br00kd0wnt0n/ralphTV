@@ -100,6 +100,7 @@ export default function ContentScheduler() {
                   vimeoReference: a.vimeo_reference || undefined,
                   durationSec: typeof a.duration_sec === 'number' ? a.duration_sec : existing?.durationSec,
                   categoryId: a.category_id || existing?.categoryId,
+                  normStatus: a.norm_status || existing?.normStatus,
                 };
                 merged.push(mapped);
                 byId.delete(a.id);

@@ -36,44 +36,6 @@ export default function LibraryPanel({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploadItems, setUploadItems] = useState<UploadItem[]>([]);
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
-  const [transcodeStatus, setTranscodeStatus] = useState<'idle' | 'checking' | 'processing' | 'success' | 'error'>('idle');
-  const [transcodeMessage, setTranscodeMessage] = useState<string>('');
-
-  const handleCheckAndTranscode = async () => {
-    if (!apiEnabled) return;
-    setTranscodeStatus('checking');
-    setTranscodeMessage('Checking assets...');
-
-    try {
-      const token = localStorage.getItem('token') || CONFIG.API_AUTH_TOKEN;
-      const headers = token ? { Authorization: `Bearer ${token}` } : {};
-
-      // Trigger reprocess endpoint
-      const response = await fetch(`${CONFIG.API_BASE_URL}/admin/normalize/reprocess`, {
-        method: 'POST',
-        headers,
-      });
-
-      if (!response.ok) throw new Error(`Failed: ${response.status}`);
-
-      const data = await response.json();
-      setTranscodeStatus('success');
-      setTranscodeMessage(data.enqueued > 0 ? `${data.enqueued} queued` : 'All ready!');
-
-      // Reset after 3 seconds
-      setTimeout(() => {
-        setTranscodeStatus('idle');
-        setTranscodeMessage('');
-      }, 3000);
-    } catch (err: any) {
-      setTranscodeStatus('error');
-      setTranscodeMessage('Error');
-      setTimeout(() => {
-        setTranscodeStatus('idle');
-        setTranscodeMessage('');
-      }, 3000);
-    }
-  };
 
   const handleFiles: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
     const files = Array.from(e.target.files || []);
@@ -93,11 +55,12 @@ export default function LibraryPanel({
           const objectUrl = URL.createObjectURL(file);
           const duration = await probeDuration(objectUrl, detectType(file.type));
           await completeUpload({ fileId: init.fileId, s3Key: init.s3Key, fileName: file.name, mimeType: file.type, size: file.size, ...(duration ? { durationSec: duration } : {}) });
+          const assetType = detectType(file.type);
           const asset: Asset = {
             id: init.fileId,
             fileId: init.fileId,
             name: file.name,
-            type: detectType(file.type),
+            type: assetType,
             url: objectUrl,
             mimeType: file.type,
             size: file.size,
@@ -105,9 +68,23 @@ export default function LibraryPanel({
             uploadedAt: new Date().toISOString(),
             tags: [],
             ...(duration ? { durationSec: duration } : {}),
+            normStatus: assetType === 'video' ? 'pending' : undefined,
           };
           onAssetUploaded(asset);
           setUploadItems(prev => prev.map(it => it.id === tempId ? { ...it, progress: 100, status: 'done' } : it));
+
+          // Auto-trigger normalization for videos
+          if (assetType === 'video' && apiEnabled) {
+            try {
+              const token = localStorage.getItem('token') || CONFIG.API_AUTH_TOKEN;
+              await fetch(`${CONFIG.API_BASE_URL}/admin/normalize/reprocess`, {
+                method: 'POST',
+                headers: token ? { Authorization: `Bearer ${token}` } : {},
+              });
+            } catch (err) {
+              console.warn('Failed to trigger normalization:', err);
+            }
+          }
         } else {
           let partsMeta;
           if (init.partUrls && init.partUrls.length) {
@@ -128,11 +105,12 @@ export default function LibraryPanel({
           const objectUrl = URL.createObjectURL(file);
           const duration = await probeDuration(objectUrl, detectType(file.type));
           await completeUpload({ fileId: init.fileId, uploadId: init.uploadId, parts: partsMeta, s3Key: init.s3Key, fileName: file.name, mimeType: file.type, size: file.size, ...(duration ? { durationSec: duration } : {}) });
+          const assetType = detectType(file.type);
           const asset: Asset = {
             id: init.fileId,
             fileId: init.fileId,
             name: file.name,
-            type: detectType(file.type),
+            type: assetType,
             url: objectUrl,
             mimeType: file.type,
             size: file.size,
@@ -140,9 +118,23 @@ export default function LibraryPanel({
             uploadedAt: new Date().toISOString(),
             tags: [],
             ...(duration ? { durationSec: duration } : {}),
+            normStatus: assetType === 'video' ? 'pending' : undefined,
           };
           onAssetUploaded(asset);
           setUploadItems(prev => prev.map(it => it.id === tempId ? { ...it, progress: 100, status: 'done' } : it));
+
+          // Auto-trigger normalization for videos
+          if (assetType === 'video' && apiEnabled) {
+            try {
+              const token = localStorage.getItem('token') || CONFIG.API_AUTH_TOKEN;
+              await fetch(`${CONFIG.API_BASE_URL}/admin/normalize/reprocess`, {
+                method: 'POST',
+                headers: token ? { Authorization: `Bearer ${token}` } : {},
+              });
+            } catch (err) {
+              console.warn('Failed to trigger normalization:', err);
+            }
+          }
         }
       } catch (err: any) {
         setUploadItems(prev => prev.map(it => it.id === tempId ? { ...it, status: 'error', error: String(err?.message || err) } : it));
@@ -206,23 +198,6 @@ export default function LibraryPanel({
                     </option>
                   ))}
                 </select>
-              </div>
-
-              <div style={{ borderTop: '1px solid #444', paddingTop: 10, marginTop: 10 }}>
-                <button
-                  className="win95-button"
-                  onClick={handleCheckAndTranscode}
-                  disabled={!apiEnabled || transcodeStatus === 'checking'}
-                  style={{
-                    fontSize: 11,
-                    padding: '6px 12px',
-                    width: '100%',
-                    background: transcodeStatus === 'success' ? 'var(--brand-teal)' : transcodeStatus === 'error' ? 'var(--brand-pink)' : undefined,
-                    color: transcodeStatus === 'success' || transcodeStatus === 'error' ? 'white' : undefined,
-                  }}
-                >
-                  {transcodeStatus === 'idle' ? 'Check + Transcode' : transcodeMessage}
-                </button>
               </div>
             </div>
 
