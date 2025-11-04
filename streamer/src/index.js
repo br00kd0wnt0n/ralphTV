@@ -75,7 +75,7 @@ function ffmpegArgs(inputUrl, offsetSec = 0, useCopyMode = false) {
     ];
   }
 
-  // Encode mode: for non-normalized files
+  // Encode mode: for non-normalized files with audio/video fallbacks
   const [w, h] = CONFIG.RESOLUTION.split('x').map((n) => parseInt(n, 10));
   const tuneGop = (process.env.STREAMER_TUNE_GOP === 'true');
   const args = [
@@ -83,6 +83,13 @@ function ffmpegArgs(inputUrl, offsetSec = 0, useCopyMode = false) {
     '-re',
     ...(offsetSec > 0 ? ['-ss', String(Math.floor(offsetSec))] : []),
     '-i', inputUrl,
+    // Add silent audio source as fallback
+    '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000',
+    // Map video from input (fallback to test pattern if missing)
+    '-map', '0:v?',
+    // Map audio: prefer real audio, fallback to silent
+    '-map', '0:a?',
+    '-map', '1:a',
     '-c:v', 'libx264',
     '-preset', CONFIG.PRESET,
     '-profile:v', 'high',
@@ -110,7 +117,54 @@ let RUNNING = false;
 let CHILD = null;
 let CURRENT = null; // { assetId, index, startedAt, url }
 let SESSION_STARTED_AT = null;
+let TEMP_FILES = []; // Track temp files for cleanup
+let KILL_TIMEOUT = null; // Track SIGKILL timeout
 const NORMALIZE = (process.env.STREAMER_NORMALIZE === 'true');
+
+// Cleanup function with SIGKILL fallback
+async function cleanupStreamer() {
+  console.log('==> Cleaning up streamer...');
+
+  // Clear any pending SIGKILL timeout
+  if (KILL_TIMEOUT) {
+    clearTimeout(KILL_TIMEOUT);
+    KILL_TIMEOUT = null;
+  }
+
+  // Kill child process with fallback to SIGKILL
+  if (CHILD) {
+    try {
+      console.log('==> Sending SIGINT to ffmpeg...');
+      CHILD.kill('SIGINT');
+
+      // Set up SIGKILL fallback after 5 seconds
+      KILL_TIMEOUT = setTimeout(() => {
+        if (CHILD) {
+          console.warn('==> ffmpeg did not exit gracefully, sending SIGKILL');
+          try { CHILD.kill('SIGKILL'); } catch (e) {
+            console.error('==> SIGKILL failed:', e);
+          }
+        }
+      }, 5000);
+    } catch (e) {
+      console.error('==> Failed to kill child process:', e);
+    }
+  }
+
+  // Clean up temp files
+  if (TEMP_FILES.length > 0) {
+    console.log(`==> Cleaning up ${TEMP_FILES.length} temp files...`);
+    await Promise.allSettled(TEMP_FILES.map(async (f) => {
+      try {
+        await fs.unlink(f);
+        console.log(`==> Deleted temp file: ${f}`);
+      } catch (e) {
+        // Ignore errors - file may already be deleted
+      }
+    }));
+    TEMP_FILES = [];
+  }
+}
 const DISABLE_BATCH = (process.env.STREAMER_DISABLE_BATCH === 'true');
 const MAX_RETRIES = parseInt(process.env.STREAMER_MAX_RETRIES || '1', 10) || 1;
 const SLATE_URL = process.env.STREAMER_SLATE_URL || '';
@@ -359,25 +413,29 @@ async function buildContinuousList(items) {
     let u, isNorm = false;
     if (items[i].url) {
       u = items[i].url;
-      isNorm = items[i].normalized || false;
+      // Strict check: only trust explicit normalized=true from backend
+      isNorm = items[i].normalized === true;
       console.log(`==> Asset ${items[i].assetId}: normalized=${isNorm} (from playlist)`);
     } else {
       const info = await getAssetInfo(items[i].assetId);
       console.log(`==> Asset ${items[i].assetId}: normalized=${info.normalized} (from API)`);
       u = info.url;
-      isNorm = info.normalized;
+      // Strict check: only trust explicit normalized=true from backend
+      isNorm = info.normalized === true;
     }
 
     if (!isNorm) allNormalized = false;
 
     const dl = await downloadToTemp(u, `cont_${i}`);
     toCleanup.push(dl);
+    TEMP_FILES.push(dl); // Track for global cleanup
 
     // Only do local normalization if not pre-normalized and NORMALIZE flag is set
     let nm = dl;
     if (NORMALIZE && !isNorm) {
       nm = await normalizeToTemp(dl, `cont_norm_${i}`);
       toCleanup.push(nm);
+      TEMP_FILES.push(nm); // Track for global cleanup
     }
     normItems.push({ path: nm });
   }
@@ -450,7 +508,7 @@ async function streamContinuous(items) {
       '-r', String(CONFIG.FPS),
       '-vf', `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`,
       '-c:a', 'aac', '-b:a', CONFIG.AUDIO_BITRATE, '-ar', '48000', '-ac', '2',
-      '-shortest',
+      // Removed -shortest to prevent premature stream termination in continuous mode
       '-flvflags', 'no_duration_filesize', '-f', 'flv', '-rtmp_live', 'live', target,
     ];
   }
@@ -546,9 +604,7 @@ async function main() {
     }
     if (req.url === '/control/stop' && req.method === 'POST') {
       RUNNING = false;
-      if (CHILD) {
-        try { CHILD.kill('SIGINT'); } catch {}
-      }
+      await cleanupStreamer();
       SESSION_STARTED_AT = null;
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true }));
@@ -556,9 +612,7 @@ async function main() {
     }
     if (req.url === '/control/restart' && req.method === 'POST') {
       RUNNING = false;
-      if (CHILD) {
-        try { CHILD.kill('SIGINT'); } catch {}
-      }
+      await cleanupStreamer();
       setTimeout(() => { RUNNING = true; SESSION_STARTED_AT = Date.now(); }, 800);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true }));
@@ -568,7 +622,7 @@ async function main() {
       // Optional seconds param via query
       const q = new URL(req.url, 'http://localhost');
       const sec = parseInt(q.searchParams.get('seconds') || '30', 10) || 30;
-      if (CHILD) { try { CHILD.kill('SIGINT'); } catch {} }
+      await cleanupStreamer();
       RUNNING = false;
       // Fire-and-forget the test signal so the HTTP call completes successfully
       (async () => {
@@ -734,5 +788,27 @@ async function main() {
     }
   }
 }
+
+// Process signal handlers for graceful shutdown
+process.on('SIGINT', async () => {
+  console.log('\n==> Received SIGINT, cleaning up...');
+  RUNNING = false;
+  await cleanupStreamer();
+  process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+  console.log('\n==> Received SIGTERM, cleaning up...');
+  RUNNING = false;
+  await cleanupStreamer();
+  process.exit(0);
+});
+
+process.on('uncaughtException', async (err) => {
+  console.error('==> Uncaught exception:', err);
+  RUNNING = false;
+  await cleanupStreamer();
+  process.exit(1);
+});
 
 main();
