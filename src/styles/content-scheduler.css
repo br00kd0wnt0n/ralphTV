@@ -1,9 +1,10 @@
-/* Content Scheduler Styles - Windows 95 Edition */
+/* Content Scheduler Styles - Modern Dark Theme */
 
 .content-scheduler {
   margin: 0 auto;
-  padding: 10px;
+  padding: 16px;
   max-width: 100%;
+  background: var(--bg-primary);
 }
 
 .content-layout {
@@ -45,13 +46,12 @@
 /* Library and Categories panels */
 .uploaded-content,
 .categories-panel {
-  background: var(--win95-face);
-  border-top: 2px solid var(--border-light);
-  border-left: 2px solid var(--border-light);
-  border-right: 2px solid var(--border-dark);
-  border-bottom: 2px solid var(--border-dark);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
   padding: 0;
   margin-bottom: 0;
+  box-shadow: var(--shadow-md);
 }
 
 /* Library panel - full width */
@@ -68,13 +68,16 @@
 
 .uploaded-content h3,
 .categories-panel h3 {
-  background: linear-gradient(90deg, var(--brand-teal) 0%, var(--brand-pink) 100%);
-  color: white;
-  padding: 4px 6px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  padding: 10px 14px;
   margin: 0;
-  font-size: 11px;
-  font-weight: bold;
-  text-shadow: 1px 1px 0 rgba(0,0,0,0.3);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  border-bottom: 1px solid var(--border-default);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
 }
 
 /* Library items grid - dedicated flex container for draggable items */
@@ -95,45 +98,51 @@
 
 /* Schedule day columns - 7 columns fit full width */
 .schedule-day {
-  background: var(--win95-face);
-  border-top: 2px solid var(--border-light);
-  border-left: 2px solid var(--border-light);
-  border-right: 2px solid var(--border-dark);
-  border-bottom: 2px solid var(--border-dark);
-  padding: 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 0;
   flex: 1;
   min-width: 140px;
   min-height: 400px;
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
 }
 
 .schedule-day h4 {
-  margin: 0 0 6px 0;
-  padding: 4px;
-  font-size: 12px;
+  margin: 0;
+  padding: 10px;
+  font-size: 10px;
+  font-weight: 600;
   text-align: center;
-  background: var(--brand-orange);
-  color: white;
-  border-top: 1px solid rgba(255,255,255,0.3);
-  border-left: 1px solid rgba(255,255,255,0.3);
-  border-right: 1px solid rgba(0,0,0,0.3);
-  border-bottom: 1px solid rgba(0,0,0,0.3);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-default);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
 }
 
 /* Content and scheduled items */
 .content-item,
 .scheduled-item {
-  background: var(--win95-face);
+  background: var(--bg-elevated);
   margin: 0;
-  padding: 6px;
-  border-top: 2px solid var(--border-light);
-  border-left: 2px solid var(--border-light);
-  border-right: 2px solid var(--border-dark);
-  border-bottom: 2px solid var(--border-dark);
+  padding: 8px 10px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
   cursor: move;
-  font-size: 10px;
-  font-weight: bold;
+  font-size: 11px;
+  font-weight: 500;
   user-select: none;
-  color: black;
+  color: var(--text-primary);
+  transition: all 0.15s ease;
+}
+
+.content-item:hover,
+.scheduled-item:hover {
+  border-color: var(--brand-pink);
+  box-shadow: var(--glow-pink);
+  transform: translateY(-1px);
 }
 
 /* Library items - set width for wrapping layout */
@@ -175,23 +184,26 @@
   border-bottom: 2px solid var(--border-light);
 }
 
-/* Category color coding with brand colors */
+/* Category color coding with brand colors - Enhanced for dark theme */
 .content-item.video,
 .scheduled-item.video {
-  border-left: 4px solid var(--brand-teal);
+  border-left: 3px solid var(--brand-teal);
+  box-shadow: inset 3px 0 8px rgba(49, 189, 191, 0.15);
 }
 
 .content-item.audio,
 .scheduled-item.audio {
-  border-left: 4px solid var(--brand-pink);
+  border-left: 3px solid var(--brand-pink);
+  box-shadow: inset 3px 0 8px rgba(235, 0, 139, 0.15);
 }
 
 .content-item.unknown,
 .scheduled-item.unknown {
-  border-left: 4px solid var(--brand-yellow);
+  border-left: 3px solid var(--brand-yellow);
+  box-shadow: inset 3px 0 8px rgba(251, 192, 0, 0.15);
 }
 
-/* Category badges */
+/* Category badges - Enhanced visibility */
 .content-item[data-category],
 .scheduled-item[data-category] {
   position: relative;
@@ -201,24 +213,24 @@
 .scheduled-item[data-category]::before {
   content: '';
   position: absolute;
-  top: 2px;
-  right: 2px;
-  width: 8px;
-  height: 8px;
+  top: 6px;
+  right: 6px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  background: var(--brand-orange);
-  border: 1px solid rgba(0,0,0,0.3);
+  background: var(--brand-pink);
+  box-shadow: 0 0 8px rgba(235, 0, 139, 0.6);
+  border: none;
 }
 
 /* Upload section */
 .upload-section {
   margin-bottom: 12px;
-  padding: 8px;
+  padding: 14px;
   background: var(--bg-secondary);
-  border-top: 2px solid var(--border-dark);
-  border-left: 2px solid var(--border-dark);
-  border-right: 2px solid var(--border-light);
-  border-bottom: 2px solid var(--border-light);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
 }
 
 /* Status boxes container */
@@ -487,19 +499,33 @@
   border-radius: 2px;
 }
 
-/* Playhead indicator */
+/* Playhead indicator - Ralph Pink with Soft Glow */
 .playhead-indicator {
   transition: all 0.5s ease-out;
+  background: var(--brand-pink);
+  box-shadow:
+    0 0 20px rgba(235, 0, 139, 0.8),
+    0 0 40px rgba(235, 0, 139, 0.4),
+    0 0 60px rgba(235, 0, 139, 0.2);
+  border: 2px solid var(--brand-pink);
+  border-radius: 2px;
+  animation: pulse-playhead 2s ease-in-out infinite;
 }
 
 @keyframes pulse-playhead {
   0%, 100% {
     opacity: 1;
-    box-shadow: 0 0 8px var(--brand-pink);
+    box-shadow:
+      0 0 20px rgba(235, 0, 139, 0.8),
+      0 0 40px rgba(235, 0, 139, 0.4),
+      0 0 60px rgba(235, 0, 139, 0.2);
   }
   50% {
-    opacity: 0.7;
-    box-shadow: 0 0 16px var(--brand-pink);
+    opacity: 0.9;
+    box-shadow:
+      0 0 30px rgba(235, 0, 139, 1),
+      0 0 60px rgba(235, 0, 139, 0.6),
+      0 0 90px rgba(235, 0, 139, 0.3);
   }
 }
 

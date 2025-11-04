@@ -76,55 +76,65 @@ export default function VolumeVisualizer({ audioElement }: VolumeVisualizerProps
       const leftVolume = dataArrayLeft.reduce((a, b) => a + b, 0) / bufferLength / 255;
       const rightVolume = dataArrayRight.reduce((a, b) => a + b, 0) / bufferLength / 255;
 
-      // Clear canvas
-      ctx.fillStyle = '#000000';
+      // Clear canvas with dark background
+      ctx.fillStyle = '#0a0a0a';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Draw channel labels
-      ctx.fillStyle = '#00ff00';
-      ctx.font = '12px "MS Sans Serif", sans-serif';
-      ctx.fillText('L', 5, 15);
-      ctx.fillText('R', 5, 35);
+      const barWidth = 40;
+      const barHeight = canvas.height - 40;
+      const leftX = 30;
+      const rightX = canvas.width - leftX - barWidth;
+      const barY = 20;
 
-      // Draw left channel meter
-      const leftWidth = leftVolume * (canvas.width - 25);
-      const leftGradient = ctx.createLinearGradient(20, 0, canvas.width - 5, 0);
+      // Draw vertical meter backgrounds (borders)
+      ctx.strokeStyle = '#3a3a3a';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(leftX, barY, barWidth, barHeight);
+      ctx.strokeRect(rightX, barY, barWidth, barHeight);
+
+      // Draw left channel vertical meter
+      const leftHeight = leftVolume * barHeight;
+      const leftGradient = ctx.createLinearGradient(0, barY + barHeight, 0, barY);
       leftGradient.addColorStop(0, '#00ff00');
-      leftGradient.addColorStop(0.7, '#ffff00');
-      leftGradient.addColorStop(0.9, '#ff8800');
+      leftGradient.addColorStop(0.5, '#ffff00');
+      leftGradient.addColorStop(0.8, '#ff8800');
       leftGradient.addColorStop(1, '#ff0000');
 
       ctx.fillStyle = leftGradient;
-      ctx.fillRect(20, 5, leftWidth, 12);
+      ctx.fillRect(leftX + 1, barY + barHeight - leftHeight, barWidth - 2, leftHeight);
 
-      // Draw left channel border
-      ctx.strokeStyle = '#00ff00';
-      ctx.strokeRect(20, 5, canvas.width - 25, 12);
-
-      // Draw right channel meter
-      const rightWidth = rightVolume * (canvas.width - 25);
-      const rightGradient = ctx.createLinearGradient(20, 0, canvas.width - 5, 0);
+      // Draw right channel vertical meter
+      const rightHeight = rightVolume * barHeight;
+      const rightGradient = ctx.createLinearGradient(0, barY + barHeight, 0, barY);
       rightGradient.addColorStop(0, '#00ff00');
-      rightGradient.addColorStop(0.7, '#ffff00');
-      rightGradient.addColorStop(0.9, '#ff8800');
+      rightGradient.addColorStop(0.5, '#ffff00');
+      rightGradient.addColorStop(0.8, '#ff8800');
       rightGradient.addColorStop(1, '#ff0000');
 
       ctx.fillStyle = rightGradient;
-      ctx.fillRect(20, 25, rightWidth, 12);
+      ctx.fillRect(rightX + 1, barY + barHeight - rightHeight, barWidth - 2, rightHeight);
 
-      // Draw right channel border
-      ctx.strokeStyle = '#00ff00';
-      ctx.strokeRect(20, 25, canvas.width - 25, 12);
-
-      // Draw peak markers
-      for (let i = 0; i < 10; i++) {
-        const x = 20 + ((canvas.width - 25) / 10) * i;
-        ctx.strokeStyle = '#333333';
+      // Draw level markers
+      ctx.strokeStyle = '#2a2a2a';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 10; i++) {
+        const y = barY + (barHeight / 10) * i;
         ctx.beginPath();
-        ctx.moveTo(x, 5);
-        ctx.lineTo(x, 37);
+        ctx.moveTo(leftX, y);
+        ctx.lineTo(leftX + barWidth, y);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(rightX, y);
+        ctx.lineTo(rightX + barWidth, y);
         ctx.stroke();
       }
+
+      // Draw channel labels at bottom
+      ctx.fillStyle = '#b0b0b0';
+      ctx.font = '10px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('L', leftX + barWidth / 2, canvas.height - 5);
+      ctx.fillText('R', rightX + barWidth / 2, canvas.height - 5);
 
       animationFrameRef.current = requestAnimationFrame(draw);
     };
@@ -146,8 +156,8 @@ export default function VolumeVisualizer({ audioElement }: VolumeVisualizerProps
       <div className="volume-visualizer-canvas-wrapper">
         <canvas
           ref={canvasRef}
-          width={300}
-          height={45}
+          width={200}
+          height={200}
           className="volume-visualizer-canvas"
         />
         {!isActive && (
