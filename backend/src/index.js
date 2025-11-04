@@ -49,6 +49,7 @@ const SERVICE_TOKEN = process.env.SERVICE_TOKEN || '';
 
 // Health
 app.get('/healthz', (req, res) => res.json({ ok: true }));
+app.get('/health', (req, res) => res.json({ ok: true }));
 
 // Auth helpers
 function signToken(payload) {

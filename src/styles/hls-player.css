@@ -42,6 +42,7 @@
   height: auto;
   display: block;
   max-height: 360px;
+  cursor: pointer;
 }
 
 .hls-player-status {
