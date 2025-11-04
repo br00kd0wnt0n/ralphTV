@@ -1,9 +1,8 @@
 /* Content Scheduler Styles - Modern Dark Theme */
 
 .content-scheduler {
-  margin: 0 auto;
+  margin: 0;
   padding: 16px 20px;
-  max-width: 100vw;
   width: 100%;
   background: var(--bg-primary);
   overflow-x: hidden;
@@ -320,7 +319,7 @@
 }
 
 .streamer-controls-content {
-  padding: 8px 10px;
+  padding: 10px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -334,8 +333,11 @@
 }
 
 .streamer-status-badge {
-  display: inline-block;
-  padding: 4px 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  height: 34px;
   background: var(--brand-teal);
   color: white;
   font-size: 10px;
@@ -362,6 +364,14 @@
   gap: 6px;
   flex-wrap: nowrap;
   flex: 1;
+}
+
+.streamer-buttons .btn {
+  height: 34px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .streamer-now-playing {
@@ -394,11 +404,13 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 6px 8px;
+  padding: 6px 10px;
   background: var(--bg-primary);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
   min-width: 85px;
+  height: 34px;
+  justify-content: center;
 }
 
 .streamer-stat-label {
