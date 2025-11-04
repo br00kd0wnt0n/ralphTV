@@ -194,6 +194,7 @@ export default function HlsPlayer({ onVideoReady, volume = 0.7, onVolumeChange }
       <div className="hls-player-video">
         <video
           ref={videoRef}
+          muted={muted}
           playsInline
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}
@@ -255,6 +256,11 @@ export default function HlsPlayer({ onVideoReady, volume = 0.7, onVolumeChange }
               // Set video volume directly
               if (videoRef.current) {
                 videoRef.current.volume = newVolume;
+              }
+              if (newVolume === 0) {
+                setMuted(true);
+              } else if (muted) {
+                setMuted(false);
               }
             }}
             className="volume-slider"
