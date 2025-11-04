@@ -70,8 +70,8 @@
 
 /* Categories panel - constrained width */
 .categories-panel {
-  width: 50%;
-  max-width: 50%;
+  width: auto;
+  max-width: 300px;
 }
 
 .uploaded-content h3,
