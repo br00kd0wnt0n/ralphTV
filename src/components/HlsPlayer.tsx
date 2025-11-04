@@ -140,12 +140,8 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
         try {
           await video.play();
           setIsPlaying(true);
-          // Try to unmute immediately
-          if (video.muted) {
-            video.muted = false;
-            setMuted(false);
-            setNeedsUnmute(false);
-          }
+          // Don't try to unmute automatically - browser will block it
+          setNeedsUnmute(true);
         } catch (e) {
           console.warn('Autoplay blocked - waiting for user interaction:', e);
           setNeedsUnmute(true);
@@ -168,12 +164,8 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
         try {
           await video.play();
           setIsPlaying(true);
-          // Try to unmute immediately
-          if (video.muted) {
-            video.muted = false;
-            setMuted(false);
-            setNeedsUnmute(false);
-          }
+          // Don't try to unmute automatically - browser will block it
+          setNeedsUnmute(true);
         } catch (e) {
           console.warn('Autoplay blocked - waiting for user interaction:', e);
           setNeedsUnmute(true);

@@ -100,7 +100,7 @@ export default function SystemStatus() {
       // Check YouTube (based on relay destinations)
       try {
         if (CONFIG.RELAY_BASE_URL) {
-          const destResponse = await fetch(`${CONFIG.RELAY_BASE_URL}/api/destinations`).catch(() => null);
+          const destResponse = await fetch(`${CONFIG.RELAY_BASE_URL}/destinations`).catch(() => null);
           const destData = await destResponse?.json().catch(() => null);
           const hasYouTube = destData?.destinations?.some((d: string) => d.toLowerCase().includes('youtube'));
           newStatuses.push({
