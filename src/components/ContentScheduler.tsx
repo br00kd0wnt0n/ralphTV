@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult } from 'react-beautiful-dnd';
 import '../styles/content-scheduler.css';
 import '../styles/hls-player.css';
@@ -25,6 +25,7 @@ import PlayheadIndicator from './PlayheadIndicator';
 import HlsPlayer from './HlsPlayer';
 import VolumeVisualizer from './VolumeVisualizer';
 import SystemStatus from './SystemStatus';
+import StatusBadge from './StatusBadge';
 
 export default function ContentScheduler() {
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -44,6 +45,12 @@ export default function ContentScheduler() {
   const assetMap = useMemo(() => new Map(assets.map(a => [a.id, a])), [assets]);
   const [rt, setRt] = useState<RealtimeClient | null>(null);
 
+  // Debounce timers for schedule saves (per day)
+  const saveTimersRef = useRef<Record<Day, NodeJS.Timeout | null>>({
+    Monday: null, Tuesday: null, Wednesday: null, Thursday: null,
+    Friday: null, Saturday: null, Sunday: null
+  });
+
   const handleAssetUploaded = (asset: Asset) => {
     setAssets(prev => [...prev, asset]);
   };
@@ -61,16 +68,17 @@ export default function ContentScheduler() {
           );
           const nextSchedule = { ...schedule };
           const nextVersions = { ...versions };
+          const nextPlayback = { ...playback };
           for (const [day, doc] of entries) {
             nextSchedule[day] = doc.items;
             nextVersions[day] = doc.version;
             if (doc.playbackMode) {
-              (playback as any)[day] = { mode: doc.playbackMode, start: doc.playStart };
+              nextPlayback[day] = { mode: doc.playbackMode, start: doc.playStart };
             }
           }
           setSchedule(nextSchedule);
           setVersions(nextVersions);
-          setPlayback({ ...playback });
+          setPlayback(nextPlayback);
 
           // Load categories
           try {
@@ -130,6 +138,17 @@ export default function ContentScheduler() {
   // Backfill durations from S3 (presigned) for unknown assets
   useDurationBackfill(assets, setAssets);
 
+  // Cleanup: clear all pending save timers on unmount
+  useEffect(() => {
+    return () => {
+      DAYS.forEach(day => {
+        if (saveTimersRef.current[day]) {
+          clearTimeout(saveTimersRef.current[day]!);
+        }
+      });
+    };
+  }, []);
+
   // Realtime subscription (optional)
   useEffect(() => {
     if (!CONFIG.REALTIME_URL || !CONFIG.USE_BACKEND_SCHEDULE) return;
@@ -154,20 +173,29 @@ export default function ContentScheduler() {
     return () => { unsubs.forEach((u) => u()); client.disconnect(); };
   }, []);
 
-  const saveDayToBackend = async (day: Day, items: ScheduledItem[]) => {
+  const saveDayToBackend = (day: Day, items: ScheduledItem[]) => {
     if (!CONFIG.USE_BACKEND_SCHEDULE || !CONFIG.API_BASE_URL) return;
-    try {
-      const meta = playback[day];
-      const doc = await putDaySchedule({ channel: CONFIG.CHANNEL, week: CONFIG.WEEK, day, items, version: versions[day] || 0, playbackMode: meta?.mode, playStart: meta?.start });
-      setVersions(prev => ({ ...prev, [day]: doc.version }));
-    } catch {
-      try {
-        const latest = await getDaySchedule({ channel: CONFIG.CHANNEL, week: CONFIG.WEEK, day });
-        setSchedule(prev => ({ ...prev, [day]: latest.items }));
-        setVersions(prev => ({ ...prev, [day]: latest.version }));
-        if (latest.playbackMode) setPlayback(prev => ({ ...prev, [day]: { mode: latest.playbackMode!, start: latest.playStart } }));
-      } catch {}
+
+    // Clear existing timer for this day
+    if (saveTimersRef.current[day]) {
+      clearTimeout(saveTimersRef.current[day]!);
     }
+
+    // Debounce the save by 500ms
+    saveTimersRef.current[day] = setTimeout(async () => {
+      try {
+        const meta = playback[day];
+        const doc = await putDaySchedule({ channel: CONFIG.CHANNEL, week: CONFIG.WEEK, day, items, version: versions[day] || 0, playbackMode: meta?.mode, playStart: meta?.start });
+        setVersions(prev => ({ ...prev, [day]: doc.version }));
+      } catch {
+        try {
+          const latest = await getDaySchedule({ channel: CONFIG.CHANNEL, week: CONFIG.WEEK, day });
+          setSchedule(prev => ({ ...prev, [day]: latest.items }));
+          setVersions(prev => ({ ...prev, [day]: latest.version }));
+          if (latest.playbackMode) setPlayback(prev => ({ ...prev, [day]: { mode: latest.playbackMode!, start: latest.playStart } }));
+        } catch {}
+      }
+    }, 500);
   };
 
   const handleDeleteFromSchedule = (day: Day, itemId: string) => {
@@ -234,6 +262,9 @@ export default function ContentScheduler() {
 
   return (
     <div className="content-scheduler container">
+      {/* Status Badge for outages */}
+      <StatusBadge />
+
       {/* Status Boxes under header */}
       <div className="status-boxes-container">
       <StreamerControls assetMap={assetMap} schedule={schedule} />

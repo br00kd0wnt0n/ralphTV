@@ -17,6 +17,8 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
   const [muted, setMuted] = useState(false);
   const [volume, setVolume] = useState(0.7);
   const checkIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const retryCountRef = useRef(0);
+  const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Expose video element to parent when ready
   useEffect(() => {
@@ -116,9 +118,19 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
-              console.log('Network error - retrying...');
-              // Don't show error UI, just retry silently
-              setTimeout(() => hls.startLoad(), 3000);
+              // Exponential backoff: 3s, 6s, 12s, 24s, 48s (max 5 retries)
+              if (retryCountRef.current < 5) {
+                const backoffDelay = Math.min(3000 * Math.pow(2, retryCountRef.current), 48000);
+                console.log(`Network error - retrying in ${backoffDelay}ms (attempt ${retryCountRef.current + 1}/5)`);
+                retryCountRef.current++;
+                if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
+                retryTimeoutRef.current = setTimeout(() => {
+                  hls.startLoad();
+                }, backoffDelay);
+              } else {
+                console.error('Max retries reached, stopping HLS');
+                hls.destroy();
+              }
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
               console.log('Media error - attempting recovery...');
@@ -135,6 +147,8 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         setError(null);
+        // Reset retry count on successful load
+        retryCountRef.current = 0;
         // Auto-play when manifest is loaded
         video.play().then(() => {
           setIsPlaying(true);
@@ -148,6 +162,10 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
       hls.attachMedia(video);
 
       return () => {
+        if (retryTimeoutRef.current) {
+          clearTimeout(retryTimeoutRef.current);
+          retryTimeoutRef.current = null;
+        }
         if (hlsRef.current) {
           hlsRef.current.destroy();
           hlsRef.current = null;
