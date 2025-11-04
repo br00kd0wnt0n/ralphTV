@@ -199,6 +199,39 @@ export default function LibraryPanel({
                   ))}
                 </select>
               </div>
+
+              {assets.length > 0 && (
+                <div style={{ borderTop: '1px solid #444', paddingTop: 10 }}>
+                  <button
+                    className="win95-button"
+                    onClick={async () => {
+                      if (window.confirm(`Delete ALL ${assets.length} assets? This cannot be undone.`)) {
+                        const idsToDelete = [...assets.map(a => a.id)];
+                        setAssets([]);
+                        if (apiEnabled) {
+                          for (const id of idsToDelete) {
+                            try {
+                              await deleteAsset(id);
+                            } catch (err) {
+                              console.error('Failed to delete asset:', id, err);
+                            }
+                          }
+                        }
+                      }
+                    }}
+                    style={{
+                      fontSize: 10,
+                      padding: '6px 12px',
+                      width: '100%',
+                      background: 'var(--brand-pink)',
+                      color: 'white',
+                      fontWeight: 'bold'
+                    }}
+                  >
+                    Delete All Assets
+                  </button>
+                </div>
+              )}
             </div>
 
             <input

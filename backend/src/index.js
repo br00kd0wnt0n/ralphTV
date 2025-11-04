@@ -409,7 +409,7 @@ app.post('/assets/:id/category', authMiddleware, async (req, res) => {
 app.get('/assets', authMiddleware, async (_req, res) => {
   try {
     const { rows } = await pool.query(`
-      select a.id, a.file_name, a.mime_type, a.size, a.s3_key, a.file_type, a.uploaded_at, a.vimeo_reference, a.duration_sec, a.thumbnail_url, a.category_id,
+      select a.id, a.file_name, a.mime_type, a.size, a.s3_key, a.file_type, a.uploaded_at, a.vimeo_reference, a.duration_sec, a.thumbnail_url, a.category_id, a.norm_status, a.s3_key_norm,
              coalesce(array_agg(t.name) filter (where t.name is not null), '{}') as tags
       from assets a
       left join asset_tags at on at.asset_id = a.id

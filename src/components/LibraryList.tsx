@@ -61,7 +61,6 @@ export default function LibraryList({
                 ...provided.draggableProps.style,
                 opacity: isReady ? 1 : 0.4,
                 cursor: isReady ? 'move' : 'not-allowed',
-                pointerEvents: isReady ? 'auto' : 'none',
               }}
             >
               {editingId === asset.id ? (
