@@ -5,9 +5,9 @@
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   padding: 0;
-  width: 500px;
+  flex: 5 1 500px;
+  min-width: 400px;
   max-width: 100%;
-  flex: 0 0 auto;
   box-shadow: var(--shadow-md);
   overflow: hidden;
 }

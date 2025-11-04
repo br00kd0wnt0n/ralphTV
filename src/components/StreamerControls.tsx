@@ -47,36 +47,33 @@ export default function StreamerControls({
         <h4>Streamer Controls</h4>
       </div>
       <div className="streamer-controls-content">
-        <div className="streamer-controls-left">
-          <div className="streamer-status-row">
-            <span className="streamer-status-label">Status:</span>
-            <span className={`streamer-status-badge ${running ? 'running' : 'stopped'}`}>
-              {running ? 'Running' : 'Stopped'}
-            </span>
-          </div>
+        <div className="streamer-controls-main">
+          <span className={`streamer-status-badge ${running ? 'running' : 'stopped'}`}>
+            {running ? 'Running' : 'Stopped'}
+          </span>
           <div className="streamer-buttons">
             <button className="btn" onClick={async () => { await streamerStart(); refresh(); }} disabled={running}>Start</button>
             <button className="btn" onClick={async () => { await streamerStop(); refresh(); }} disabled={!running}>Stop</button>
             <button className="btn" onClick={async () => { await streamerRestart(); setTimeout(refresh, 1200); }}>Restart</button>
             <button className="btn" onClick={async () => { await streamerTestSignal(30); refresh(); }}>Test Signal (30s)</button>
           </div>
-          {running && current && (
-            <div className="streamer-now-playing">
-              #{current.index}: {assetName}
+          <div className="streamer-controls-right">
+            <div className="streamer-stat">
+              <span className="streamer-stat-label">Session:</span>
+              <span className="streamer-stat-value">{formatDuration(sessionSec)}</span>
             </div>
-          )}
-          {error && <div className="streamer-error">{error}</div>}
-        </div>
-        <div className="streamer-controls-right">
-          <div className="streamer-stat">
-            <span className="streamer-stat-label">Session:</span>
-            <span className="streamer-stat-value">{formatDuration(sessionSec)}</span>
-          </div>
-          <div className="streamer-stat">
-            <span className="streamer-stat-label">Week:</span>
-            <span className="streamer-stat-value">{formatDuration(weekTotalSec)}</span>
+            <div className="streamer-stat">
+              <span className="streamer-stat-label">Week:</span>
+              <span className="streamer-stat-value">{formatDuration(weekTotalSec)}</span>
+            </div>
           </div>
         </div>
+        {running && current && (
+          <div className="streamer-now-playing">
+            #{current.index}: {assetName}
+          </div>
+        )}
+        {error && <div className="streamer-error">{error}</div>}
       </div>
     </div>
   );

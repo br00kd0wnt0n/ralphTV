@@ -203,8 +203,8 @@ h1, h2, h3, h4, h5, h6 {
   padding: 16px 20px;
   background: linear-gradient(90deg, var(--brand-pink) 0%, var(--brand-teal) 100%);
   border-bottom: 1px solid var(--border-default);
-  margin-bottom: 0;
-  width: 100%;
+  margin: 0;
+  width: 100vw;
   max-width: 100vw;
   box-sizing: border-box;
 }

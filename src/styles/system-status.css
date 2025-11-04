@@ -6,9 +6,9 @@
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-md);
   overflow: hidden;
-  width: 240px;
+  flex: 2 1 240px;
+  min-width: 220px;
   max-width: 100%;
-  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
 }
