@@ -2,7 +2,7 @@ import React, { useRef, useState, useMemo } from 'react';
 import { Droppable } from 'react-beautiful-dnd';
 import type { Asset, Category } from '../state/models';
 import LibraryList from './LibraryList';
-import { updateAssetTags, setAssetCategory, updateAssetName } from '../api/assets';
+import { setAssetCategory, updateAssetName, deleteAsset } from '../api/assets';
 import { CONFIG } from '../config';
 import { initUpload, putSingle, completeUpload, uploadMultipart, uploadMultipartWithSigner, getPartUrl } from '../api/upload';
 import { probeDuration } from '../utils/media';
@@ -238,10 +238,6 @@ export default function LibraryPanel({
               <LibraryList
                 assets={filteredAssets}
                 categories={categories}
-                onChangeTags={(assetId, tags) => {
-                  setAssets((prev) => prev.map((a) => (a.id === assetId ? { ...a, tags } : a)));
-                  if (apiEnabled) updateAssetTags({ assetId, tags }).catch(() => {});
-                }}
                 onChangeCategory={(assetId, categoryId) => {
                   setAssets((prev) => prev.map((a) => (a.id === assetId ? { ...a, categoryId } : a)));
                   if (apiEnabled) setAssetCategory({ assetId, categoryId }).catch(() => {});
@@ -249,6 +245,19 @@ export default function LibraryPanel({
                 onChangeName={(assetId, name) => {
                   setAssets((prev) => prev.map((a) => (a.id === assetId ? { ...a, name } : a)));
                   if (apiEnabled) updateAssetName({ assetId, name }).catch(() => {});
+                }}
+                onDelete={async (assetId) => {
+                  // Remove from local state immediately for responsive UI
+                  setAssets((prev) => prev.filter((a) => a.id !== assetId));
+                  // Call API to delete from backend
+                  if (apiEnabled) {
+                    try {
+                      await deleteAsset(assetId);
+                    } catch (err) {
+                      console.error('Failed to delete asset:', err);
+                      // Could optionally restore the asset here if API call fails
+                    }
+                  }
                 }}
               />
             </div>

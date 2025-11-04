@@ -478,6 +478,26 @@ app.post('/assets/:id/name', authMiddleware, async (req, res) => {
   }
 });
 
+app.delete('/assets/:id', authMiddleware, async (req, res) => {
+  const id = req.params.id;
+  try {
+    // Delete from database (cascade will handle scheduled_items references)
+    const result = await pool.query('delete from assets where id=$1 returning s3_key', [id]);
+
+    // Note: We don't delete from S3 immediately for safety - files can be cleaned up manually
+    // or via a separate cleanup job if needed
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: 'Asset not found' });
+    }
+
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error('asset delete error', e);
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // Feed endpoints
 app.get('/feed/:channel/:week/:day/playlist', authMiddleware, async (req, res) => {
   const { channel, week, day } = req.params;

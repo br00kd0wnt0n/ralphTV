@@ -91,3 +91,12 @@ export async function updateAssetName(params: { assetId: string; name: string })
   if (!res.ok) throw new Error(`updateAssetName failed: ${res.status}`);
   return res.json();
 }
+
+export async function deleteAsset(assetId: string) {
+  const res = await fetch(`${CONFIG.API_BASE_URL}/assets/${encodeURIComponent(assetId)}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(`deleteAsset failed: ${res.status}`);
+  return res.json().catch(() => ({}));
+}

@@ -1,23 +1,23 @@
 import React, { useState } from 'react';
 import type { Asset, Category } from '../state/models';
 import { Draggable } from 'react-beautiful-dnd';
-import TagEditor from './TagEditor';
 
 export default function LibraryList({
   assets,
   categories,
-  onChangeTags,
   onChangeCategory,
   onChangeName,
+  onDelete,
 }: {
   assets: Asset[];
-  onChangeTags: (assetId: string, tags: string[]) => void;
   categories: Category[];
   onChangeCategory: (assetId: string, categoryId: string | undefined) => void;
   onChangeName?: (assetId: string, name: string) => void;
+  onDelete?: (assetId: string) => void;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
 
   const handleStartEdit = (asset: Asset) => {
     setEditingId(asset.id);
@@ -55,6 +55,8 @@ export default function LibraryList({
               {...provided.dragHandleProps}
               className={`content-item ${asset.type}`}
               title={isReady ? asset.name : `${asset.name} - Not ready to use yet`}
+              onMouseEnter={() => setHoveredId(asset.id)}
+              onMouseLeave={() => setHoveredId(null)}
               style={{
                 ...provided.draggableProps.style,
                 opacity: isReady ? 1 : 0.4,
@@ -87,16 +89,50 @@ export default function LibraryList({
                   value={asset.categoryId || ''}
                   onChange={(e) => onChangeCategory(asset.id, e.target.value || undefined)}
                   className="library-category-select"
+                  style={{ flex: 1 }}
                 >
                   <option value="">—</option>
                   {categories.map(c => (
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
                 </select>
-                <TagEditor
-                  tags={asset.tags || []}
-                  onChange={(next) => onChangeTags(asset.id, next)}
-                />
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: '#666',
+                    fontWeight: 'bold',
+                    letterSpacing: '-1px',
+                    marginLeft: 6,
+                    cursor: 'grab'
+                  }}
+                  title="Drag to schedule"
+                >
+                  ::
+                </span>
+                {hoveredId === asset.id && onDelete && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (window.confirm(`Delete "${asset.name}"?`)) {
+                        onDelete(asset.id);
+                      }
+                    }}
+                    style={{
+                      marginLeft: 6,
+                      padding: '2px 6px',
+                      fontSize: 10,
+                      background: 'var(--brand-pink)',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: 3,
+                      cursor: 'pointer',
+                      fontWeight: 'bold'
+                    }}
+                    title="Delete asset"
+                  >
+                    ×
+                  </button>
+                )}
               </div>
             </div>
           )}
