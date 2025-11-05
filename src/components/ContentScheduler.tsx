@@ -17,11 +17,9 @@ import LibraryPanel from './LibraryPanel';
 import DayColumn from './DayColumn';
 import WeekSummary from './WeekSummary';
 import { useDurationBackfill } from '../hooks/useDurationBackfill';
-import OnAirTile from './OnAirTile';
 import StreamerControls from './StreamerControls';
 import ScheduleDiagnostics from './ScheduleDiagnostics';
 import PreviewPane from './PreviewPane';
-import PlayheadIndicator from './PlayheadIndicator';
 import HlsPlayer from './HlsPlayer';
 import VolumeVisualizer from './VolumeVisualizer';
 import SystemStatus from './SystemStatus';
@@ -268,7 +266,6 @@ export default function ContentScheduler() {
       {/* Status Boxes under header */}
       <div className="status-boxes-container">
       <StreamerControls assetMap={assetMap} schedule={schedule} />
-      <OnAirTile assetMap={assetMap} />
       </div>
 
       {/* Preview Panel Container - HLS Player, Volume Visualizer, Asset Preview, and System Status */}
@@ -297,7 +294,6 @@ export default function ContentScheduler() {
 
           {/* Schedule Grid - full width */}
           <div className="schedule-grid" style={{ position: 'relative' }}>
-              <PlayheadIndicator schedule={schedule} assetMap={assetMap} />
               {DAYS.map((day) => (
                 <Droppable droppableId={day} key={day}>
                   {(provided) => (

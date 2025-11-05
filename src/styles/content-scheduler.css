@@ -300,7 +300,8 @@
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-md);
   overflow: hidden;
-  flex: 1;
+  flex: 1 1 100%;
+  width: 100%;
   min-width: 500px;
 }
 

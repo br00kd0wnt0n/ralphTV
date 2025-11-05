@@ -85,7 +85,7 @@ export default function StreamerControls({
       <div className="streamer-controls-content">
         <div className="streamer-controls-main">
           <span className={`streamer-status-badge ${running ? 'running' : 'stopped'}`}>
-            {running ? 'Running' : 'Stopped'}
+            {running ? 'ON AIR' : 'OFF AIR'}
           </span>
           <div className="streamer-buttons">
             <button
