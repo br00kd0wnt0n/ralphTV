@@ -119,10 +119,45 @@
   flex: 1;
 }
 
-.service-message {
+.status-label {
   font-size: 9px;
-  color: var(--text-secondary);
-  padding-left: 22px;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+}
+
+.status-label-online {
+  color: #4caf50;
+  background: rgba(76, 175, 80, 0.1);
+}
+
+.status-label-offline {
+  color: var(--text-tertiary);
+  background: rgba(128, 128, 128, 0.1);
+}
+
+.status-label-error {
+  color: #ff9800;
+  background: rgba(255, 152, 0, 0.1);
+}
+
+.status-label-unknown {
+  color: var(--text-tertiary);
+  background: rgba(128, 128, 128, 0.1);
+}
+
+/* Service item states */
+.service-item.service-online {
+  border-left: 3px solid #4caf50;
+}
+
+.service-item.service-error {
+  border-left: 3px solid #ff9800;
+}
+
+.service-item.service-offline {
+  border-left: 3px solid var(--border-subtle);
 }
 
 .last-check {

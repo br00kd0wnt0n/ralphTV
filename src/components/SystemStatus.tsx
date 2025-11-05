@@ -166,13 +166,26 @@ export default function SystemStatus() {
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'online':
-        return '●';
+        return '●'; // Green - fully operational
       case 'offline':
-        return '○';
+        return '○'; // Gray - not available
       case 'error':
-        return '⚠';
+        return '⚠'; // Orange/Yellow - error state
       default:
-        return '?';
+        return '?'; // Unknown
+    }
+  };
+
+  const getStatusLabel = (status: string, message?: string) => {
+    switch (status) {
+      case 'online':
+        return message || 'Online';
+      case 'offline':
+        return message || 'Offline';
+      case 'error':
+        return message || 'Error';
+      default:
+        return message || 'Unknown';
     }
   };
 
@@ -192,16 +205,16 @@ export default function SystemStatus() {
         </div>
         <div className="service-list">
           {services.map((service, idx) => (
-            <div key={idx} className="service-item">
+            <div key={idx} className={`service-item service-${service.status}`}>
               <div className="service-status">
-                <span className={`status-indicator status-${service.status}`}>
+                <span className={`status-indicator status-${service.status}`} title={`Status: ${service.status}`}>
                   {getStatusIcon(service.status)}
                 </span>
                 <span className="service-name">{service.name}</span>
+                <span className={`status-label status-label-${service.status}`}>
+                  {getStatusLabel(service.status, service.message)}
+                </span>
               </div>
-              {service.message && (
-                <div className="service-message">{service.message}</div>
-              )}
             </div>
           ))}
         </div>
