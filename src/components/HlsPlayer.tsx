@@ -127,10 +127,17 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
 
       while (attempts < maxAttempts) {
         try {
-          const response = await fetch(streamUrl, { method: 'HEAD' });
+          // Use GET instead of HEAD since relay may return 200 for HEAD even when file doesn't exist
+          const response = await fetch(streamUrl, { method: 'GET' });
           if (response.ok) {
-            console.log(`HLS manifest available after ${attempts * 500}ms`);
-            return true;
+            // Verify we actually got manifest content (should start with #EXTM3U)
+            const text = await response.text();
+            if (text.includes('#EXTM3U')) {
+              console.log(`HLS manifest available after ${attempts * 500}ms`);
+              return true;
+            } else {
+              console.log(`HLS response OK but invalid manifest content (attempt ${attempts + 1}/${maxAttempts})`);
+            }
           }
         } catch (error) {
           // Manifest not ready yet
