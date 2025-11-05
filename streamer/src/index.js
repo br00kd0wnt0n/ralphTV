@@ -110,14 +110,14 @@ function ffmpegArgs(inputUrl, offsetSec = 0, useCopyMode = false) {
       // MP4 logo: loop the video infinitely and overlay
       // Use loop filter with shortest option to loop indefinitely
       // Format: loop=loop=-1:size=32767 (max frames before loop), then setpts to sync timing
-      filterComplex = `[0:v]${videoFilter}[v];[${logoInputIndex}:v]loop=loop=-1:size=32767,setpts=N/(${CONFIG.FPS}*TB),scale=${LOGO_SCALE}:-1,format=rgba,colorchannelmixer=aa=${LOGO_OPACITY}[logo];[v][logo]overlay=W-w-20:20:shortest=1`;
+      filterComplex = `[0:v]${videoFilter}[v];[${logoInputIndex}:v]loop=loop=-1:size=32767,setpts=N/(${CONFIG.FPS}*TB),scale=${LOGO_SCALE}:-1,format=rgba,colorchannelmixer=aa=${LOGO_OPACITY}[logo];[v][logo]overlay=W-w-20:20:shortest=1[vout]`;
     } else {
       // PNG logo: static image overlay
-      filterComplex = `[0:v]${videoFilter}[v];[${logoInputIndex}:v]scale=${LOGO_SCALE}:-1,format=rgba,colorchannelmixer=aa=${LOGO_OPACITY}[logo];[v][logo]overlay=W-w-20:20`;
+      filterComplex = `[0:v]${videoFilter}[v];[${logoInputIndex}:v]scale=${LOGO_SCALE}:-1,format=rgba,colorchannelmixer=aa=${LOGO_OPACITY}[logo];[v][logo]overlay=W-w-20:20[vout]`;
     }
 
     args.push('-filter_complex', filterComplex);
-    args.push('-map', '0:a?', '-map', `${audioInputIndex}:a`);
+    args.push('-map', '[vout]', '-map', '0:a?', '-map', `${audioInputIndex}:a`);
   } else {
     // No logo, use simple filter
     args.push(
