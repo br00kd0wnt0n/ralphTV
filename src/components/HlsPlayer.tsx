@@ -107,18 +107,58 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
     if (!video) return;
 
     setPlayerStatus('initializing');
-    setStatusMessage('Initializing HLS player...');
+    setStatusMessage('Waiting for HLS segments...');
     const streamUrl = `${CONFIG.RELAY_BASE_URL}/hls/stream.m3u8`;
+
+    // Wait for HLS manifest to be available before initializing player
+    // Stream needs time to generate first segments (typically 2-5 seconds)
+    const checkHlsAvailability = async () => {
+      let attempts = 0;
+      const maxAttempts = 10;
+
+      while (attempts < maxAttempts) {
+        try {
+          const response = await fetch(streamUrl, { method: 'HEAD' });
+          if (response.ok) {
+            console.log(`HLS manifest available after ${attempts * 500}ms`);
+            return true;
+          }
+        } catch (error) {
+          // Manifest not ready yet
+        }
+        attempts++;
+        await new Promise(resolve => setTimeout(resolve, 500));
+        setStatusMessage(`Waiting for HLS segments... (${attempts}/${maxAttempts})`);
+      }
+
+      console.warn('HLS manifest not available after max attempts');
+      return false;
+    };
+
+    // Check availability then initialize player
+    checkHlsAvailability().then((available) => {
+      if (!available) {
+        setPlayerStatus('error');
+        setStatusMessage('HLS manifest not available');
+        return;
+      }
+
+      setPlayerStatus('initializing');
+      setStatusMessage('Initializing HLS player...');
 
     if (Hls.isSupported()) {
       const hls = new Hls({
         enableWorker: true,
         lowLatencyMode: true,
-        backBufferLength: 90,
-        maxBufferLength: 30,
-        maxMaxBufferLength: 60,
-        maxLoadingDelay: 4,
-        maxBufferingDelay: 6,
+        // Reduced buffer settings for faster startup
+        backBufferLength: 30,
+        maxBufferLength: 10,
+        maxMaxBufferLength: 20,
+        maxLoadingDelay: 2,
+        maxBufferingDelay: 3,
+        // Live stream specific settings
+        liveSyncDurationCount: 3,
+        liveMaxLatencyDurationCount: 10,
       });
 
       hlsRef.current = hls;
@@ -204,35 +244,44 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
 
       hls.loadSource(streamUrl);
       hls.attachMedia(video);
-
-      return () => {
-        if (retryTimeoutRef.current) {
-          clearTimeout(retryTimeoutRef.current);
-          retryTimeoutRef.current = null;
-        }
-        if (hlsRef.current) {
-          hlsRef.current.destroy();
-          hlsRef.current = null;
-        }
-      };
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
       // Native HLS support (Safari)
       video.src = streamUrl;
       video.addEventListener('loadedmetadata', () => {
         video.play().then(() => {
           setIsPlaying(true);
+          setPlayerStatus('playing');
+          setStatusMessage('');
         }).catch((e) => {
           console.warn('Autoplay blocked - waiting for user interaction:', e);
-          // Don't show error, browser requires user interaction
+          setPlayerStatus('idle');
+          setStatusMessage('Click to play');
         });
       });
       video.addEventListener('error', () => {
         console.warn('Native HLS playback error');
+        setPlayerStatus('error');
+        setStatusMessage('Playback error');
       });
     } else {
       console.warn('HLS not supported in this browser');
+      setPlayerStatus('error');
+      setStatusMessage('HLS not supported');
     }
-  }, [streaming, relayAvailable]);
+    }); // End checkHlsAvailability().then()
+
+    // Cleanup function
+    return () => {
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
+        retryTimeoutRef.current = null;
+      }
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+    };
+  }, [streaming, relayAvailable, playerStatus]);
 
   // Don't show player if relay is not available (suppress UI errors)
   if (!relayAvailable) {
