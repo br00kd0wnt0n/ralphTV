@@ -34,7 +34,18 @@ export default function OnAirTile({ assetMap }: { assetMap: Map<string, Asset> }
           const elapsed = Math.floor((Date.now() - s.current.startedAt) / 1000);
           s.offsetSec = elapsed;
           s.index = s.current.index;
-          s.item = s.current.assetId ? { assetId: s.current.assetId, durationSec: 0 } : null;
+
+          // Look up the actual asset to get duration
+          if (s.current.assetId) {
+            const asset = assetMap.get(s.current.assetId);
+            s.item = {
+              assetId: s.current.assetId,
+              durationSec: asset?.durationSec || 0,
+              name: asset?.name
+            };
+          } else {
+            s.item = null;
+          }
         }
         if (!cancelled) { setStatus(s); setError(null); }
         // Fetch playlist for 'Next up'
@@ -47,7 +58,7 @@ export default function OnAirTile({ assetMap }: { assetMap: Map<string, Asset> }
     load();
     const t = setInterval(load, 5000);
     return () => { cancelled = true; clearInterval(t); };
-  }, []);
+  }, [assetMap]);
 
   // Fetch relay status and destinations
   useEffect(() => {

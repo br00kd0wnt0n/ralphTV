@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { streamerStatus } from '../api/streamer';
+import { getStatusToday } from '../api/status';
 import { CONFIG } from '../config';
 import type { Day, ScheduledItem, Asset } from '../state/models';
 import { durationToHeightPx } from '../state/schedule';
@@ -25,26 +26,18 @@ export default function PlayheadIndicator({
     let cancelled = false;
 
     const fetchStatus = async () => {
-      // Use streamer as source of truth instead of time-based calculation
-      if (!CONFIG.STREAMER_BASE_URL) return;
-
       try {
-        const status = await streamerStatus();
-        if (cancelled) return;
+        let currentAssetId: string | null = null;
+        let offsetSec = 0;
 
-        // Check if streamer is running and has a current asset
-        if (status?.running && status?.current?.assetId) {
-          const currentAssetId = status.current.assetId;
+        // Prefer streamer as source of truth if available
+        if (CONFIG.STREAMER_BASE_URL) {
+          try {
+            const status = await streamerStatus();
+            if (!cancelled && status?.running && status?.current?.assetId) {
+              currentAssetId = status.current.assetId;
 
-          // Find which day and position this asset is in the schedule
-          let found = false;
-          for (const day of Object.keys(schedule) as Day[]) {
-            const items = schedule[day] || [];
-            const itemIndex = items.findIndex(it => it?.assetId === currentAssetId);
-
-            if (itemIndex !== -1) {
               // Calculate offset based on when the asset started playing
-              let offsetSec = 0;
               if (status.current.startedAt) {
                 const elapsed = Date.now() - status.current.startedAt;
                 offsetSec = Math.max(0, Math.floor(elapsed / 1000));
@@ -55,7 +48,31 @@ export default function PlayheadIndicator({
                   offsetSec = Math.min(offsetSec, asset.durationSec);
                 }
               }
+            }
+          } catch (e) {
+            // Streamer unavailable, fall back to time-based
+          }
+        }
 
+        // Fallback to time-based calculation if streamer not available
+        if (!currentAssetId && CONFIG.API_BASE_URL) {
+          const status = await getStatusToday(CONFIG.CHANNEL, CONFIG.WEEK);
+          if (!cancelled && status?.item?.assetId) {
+            currentAssetId = status.item.assetId;
+            offsetSec = status.offsetSec || 0;
+          }
+        }
+
+        if (cancelled) return;
+
+        // Find which day and position this asset is in the schedule
+        if (currentAssetId) {
+          let found = false;
+          for (const day of Object.keys(schedule) as Day[]) {
+            const items = schedule[day] || [];
+            const itemIndex = items.findIndex(it => it?.assetId === currentAssetId);
+
+            if (itemIndex !== -1) {
               setPlayhead({
                 day,
                 itemIndex,
@@ -73,7 +90,7 @@ export default function PlayheadIndicator({
           setPlayhead(null);
         }
       } catch (e) {
-        // Silently handle errors (streamer might be offline)
+        // Silently handle errors
         setPlayhead(null);
       }
     };
