@@ -5,8 +5,8 @@ function App() {
   return (
     <div>
       <div className="app-header">
-        <img src="/logo.png" alt="Ralph" className="app-logo" />
-        <h1>BROADCASTER</h1>
+        <img src="/logo.png" alt="RalphTV" className="app-logo" />
+        <h1>RalphTV BROADCASTER</h1>
       </div>
       <Protected>
         <ContentScheduler />
