@@ -300,7 +300,7 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
         hlsRef.current = null;
       }
     };
-  }, [streaming, relayAvailable, playerStatus]);
+  }, [streaming, relayAvailable]);
 
   // Always show player container, even if relay unavailable (show status instead)
 
