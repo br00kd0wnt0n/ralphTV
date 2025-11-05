@@ -88,7 +88,6 @@ function ffmpegArgs(inputUrl, offsetSec = 0, useCopyMode = false) {
 
   // Build video filter chain with optional logo overlay
   let videoFilter = `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`;
-  const useLogoOverlay = LOGO_ENABLE && LOGO_EXISTS;
 
   const args = [
     '-loglevel', 'info',
