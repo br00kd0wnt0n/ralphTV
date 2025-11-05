@@ -855,13 +855,14 @@ app.get('/api/system/status', async (req, res) => {
     });
   } else {
     try {
-      const streamerRes = await fetch(`${STREAMER_URL}/health`, { timeout: 3000 });
+      // Check /status endpoint for detailed info (includes running state)
+      const streamerRes = await fetch(`${STREAMER_URL}/status`, { timeout: 3000 });
       if (streamerRes.ok) {
         const streamerData = await streamerRes.json();
         status.services.push({
           name: 'Streamer Service',
           status: 'online',
-          message: streamerData.streaming ? 'Streaming' : 'Ready'
+          message: streamerData.running ? 'Streaming' : 'Ready'
         });
       } else {
         status.services.push({
