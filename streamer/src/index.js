@@ -598,7 +598,7 @@ async function streamContinuous(items) {
       '-c:a', 'aac', '-b:a', CONFIG.AUDIO_BITRATE, '-ar', '48000', '-ac', '2',
       // Removed -shortest to prevent premature stream termination in continuous mode
       '-flvflags', 'no_duration_filesize', '-f', 'flv', '-rtmp_live', 'live', target,
-    ];
+    );
   }
   console.log('ffmpeg continuous', args.join(' '));
   await new Promise((resolve, reject) => {
