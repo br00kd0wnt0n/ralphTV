@@ -16,9 +16,13 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
   const [relayAvailable, setRelayAvailable] = useState(true);
   const [muted, setMuted] = useState(false);
   const [volume, setVolume] = useState(0.7);
+  const [playerStatus, setPlayerStatus] = useState<'idle' | 'initializing' | 'loading' | 'playing' | 'buffering' | 'error' | 'unstable'>('idle');
+  const [statusMessage, setStatusMessage] = useState<string>('');
   const checkIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const retryCountRef = useRef(0);
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastProgressRef = useRef<number>(0);
+  const stallCheckRef = useRef<NodeJS.Timeout | null>(null);
 
   // Expose video element to parent when ready
   useEffect(() => {
@@ -94,12 +98,16 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
         hlsRef.current.destroy();
         hlsRef.current = null;
       }
+      setPlayerStatus('idle');
+      setStatusMessage('');
       return;
     }
 
     const video = videoRef.current;
     if (!video) return;
 
+    setPlayerStatus('initializing');
+    setStatusMessage('Initializing HLS player...');
     const streamUrl = `${CONFIG.RELAY_BASE_URL}/hls/stream.m3u8`;
 
     if (Hls.isSupported()) {
@@ -109,6 +117,8 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
         backBufferLength: 90,
         maxBufferLength: 30,
         maxMaxBufferLength: 60,
+        maxLoadingDelay: 4,
+        maxBufferingDelay: 6,
       });
 
       hlsRef.current = hls;
@@ -122,40 +132,74 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
               if (retryCountRef.current < 5) {
                 const backoffDelay = Math.min(3000 * Math.pow(2, retryCountRef.current), 48000);
                 console.log(`Network error - retrying in ${backoffDelay}ms (attempt ${retryCountRef.current + 1}/5)`);
+                setPlayerStatus('error');
+                setStatusMessage(`Network error, retrying in ${backoffDelay / 1000}s... (${retryCountRef.current + 1}/5)`);
                 retryCountRef.current++;
                 if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
                 retryTimeoutRef.current = setTimeout(() => {
+                  setPlayerStatus('loading');
+                  setStatusMessage('Retrying connection...');
                   hls.startLoad();
                 }, backoffDelay);
               } else {
                 console.error('Max retries reached, stopping HLS');
+                setPlayerStatus('error');
+                setStatusMessage('Connection failed - max retries reached');
                 hls.destroy();
               }
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
               console.log('Media error - attempting recovery...');
+              setPlayerStatus('unstable');
+              setStatusMessage('Media error, recovering...');
               hls.recoverMediaError();
               break;
             default:
               // Only show error for non-recoverable issues
               console.error('Fatal HLS error');
+              setPlayerStatus('error');
+              setStatusMessage('Fatal playback error');
               hls.destroy();
               break;
           }
         }
       });
 
+      hls.on(Hls.Events.MANIFEST_LOADING, () => {
+        setPlayerStatus('loading');
+        setStatusMessage('Loading stream manifest...');
+      });
+
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         setError(null);
         // Reset retry count on successful load
         retryCountRef.current = 0;
+        setPlayerStatus('loading');
+        setStatusMessage('Manifest loaded, starting playback...');
         // Auto-play when manifest is loaded
         video.play().then(() => {
           setIsPlaying(true);
+          setPlayerStatus('playing');
+          setStatusMessage('');
         }).catch((e) => {
           console.warn('Autoplay blocked - waiting for user interaction:', e);
-          // Don't show error, browser requires user interaction
+          setPlayerStatus('idle');
+          setStatusMessage('Click to play');
         });
+      });
+
+      hls.on(Hls.Events.FRAG_LOADING, () => {
+        if (playerStatus !== 'playing') {
+          setPlayerStatus('buffering');
+          setStatusMessage('Buffering...');
+        }
+      });
+
+      hls.on(Hls.Events.FRAG_LOADED, () => {
+        if (!video.paused) {
+          setPlayerStatus('playing');
+          setStatusMessage('');
+        }
       });
 
       hls.loadSource(streamUrl);
@@ -228,13 +272,21 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
 
       {!streaming && (
         <div className="hls-player-status">
-          <div className="status-badge loading">Waiting for stream...</div>
+          <div className="status-badge status-idle">Waiting for stream...</div>
         </div>
       )}
 
-      {streaming && !isPlaying && (
+      {streaming && statusMessage && (
         <div className="hls-player-status">
-          <div className="status-badge loading">Click video to play</div>
+          <div className={`status-badge status-${playerStatus}`}>
+            {statusMessage}
+          </div>
+        </div>
+      )}
+
+      {streaming && !statusMessage && !isPlaying && (
+        <div className="hls-player-status">
+          <div className="status-badge status-idle">Click video to play</div>
         </div>
       )}
 

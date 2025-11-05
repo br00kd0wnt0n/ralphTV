@@ -57,21 +57,62 @@
   padding: 4px 12px;
   font-size: 10px;
   font-weight: bold;
-  border-top: 2px solid rgba(255,255,255,0.3);
-  border-left: 2px solid rgba(255,255,255,0.3);
-  border-right: 2px solid rgba(0,0,0,0.3);
-  border-bottom: 2px solid rgba(0,0,0,0.3);
+  border-radius: 4px;
+  font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
 }
 
+/* Status states with traffic light colors */
+.status-badge.status-idle {
+  background: rgba(128, 128, 128, 0.2);
+  color: var(--text-secondary);
+  border: 1px solid rgba(128, 128, 128, 0.3);
+}
+
+.status-badge.status-initializing,
+.status-badge.status-loading {
+  background: rgba(33, 150, 243, 0.2);
+  color: #42a5f5;
+  border: 1px solid rgba(33, 150, 243, 0.4);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.status-badge.status-playing {
+  background: rgba(76, 175, 80, 0.2);
+  color: #4caf50;
+  border: 1px solid rgba(76, 175, 80, 0.4);
+}
+
+.status-badge.status-buffering {
+  background: rgba(255, 193, 7, 0.2);
+  color: #ffc107;
+  border: 1px solid rgba(255, 193, 7, 0.4);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.status-badge.status-unstable {
+  background: rgba(255, 152, 0, 0.2);
+  color: #ff9800;
+  border: 1px solid rgba(255, 152, 0, 0.4);
+}
+
+.status-badge.status-error {
+  background: rgba(244, 67, 54, 0.2);
+  color: #f44336;
+  border: 1px solid rgba(244, 67, 54, 0.4);
+}
+
+/* Legacy support */
 .status-badge.loading {
-  background: var(--brand-orange);
-  color: white;
+  background: rgba(255, 152, 0, 0.2);
+  color: #ff9800;
+  border: 1px solid rgba(255, 152, 0, 0.4);
   animation: pulse 2s ease-in-out infinite;
 }
 
 .status-badge.error {
-  background: #d32f2f;
-  color: white;
+  background: rgba(244, 67, 54, 0.2);
+  color: #f44336;
+  border: 1px solid rgba(244, 67, 54, 0.4);
 }
 
 .hls-player-info {
