@@ -103,8 +103,8 @@ export const LoginComponent = () => {
       alignItems: 'center',
       justifyContent: 'center',
       minHeight: '100vh',
-      background: 'linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%)',
-      padding: '20px'
+      background: '#000000',
+      padding: '40px 20px'
     }}>
       {/* ralphTV Logo */}
       <img
@@ -112,28 +112,23 @@ export const LoginComponent = () => {
         alt="ralphTV"
         style={{
           width: '100%',
-          maxWidth: '600px',
+          maxWidth: '500px',
           height: 'auto',
-          marginBottom: '60px',
-          borderRadius: '12px',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)'
+          marginBottom: '48px',
+          borderRadius: '16px',
+          boxShadow: '0 20px 60px rgba(255, 0, 102, 0.2)'
         }}
       />
 
-      {/* Login Form */}
+      {/* Login Form - no grey box, floating inputs */}
       <form
         onSubmit={handleSubmit}
         style={{
           display: 'flex',
           flexDirection: 'column',
-          gap: '16px',
+          gap: '20px',
           width: '100%',
-          maxWidth: '400px',
-          background: 'rgba(255, 255, 255, 0.05)',
-          padding: '32px',
-          borderRadius: '12px',
-          backdropFilter: 'blur(10px)',
-          border: '1px solid rgba(255, 255, 255, 0.1)'
+          maxWidth: '380px'
         }}
       >
         <input
@@ -143,17 +138,24 @@ export const LoginComponent = () => {
           placeholder="Email"
           required
           style={{
-            padding: '14px 18px',
-            fontSize: '16px',
+            padding: '16px 20px',
+            fontSize: '15px',
             borderRadius: '8px',
-            border: '1px solid rgba(255, 255, 255, 0.2)',
-            background: 'rgba(0, 0, 0, 0.3)',
+            border: '1px solid rgba(255, 255, 255, 0.15)',
+            background: 'transparent',
             color: '#ffffff',
             outline: 'none',
-            transition: 'all 0.3s ease'
+            transition: 'all 0.3s ease',
+            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
           }}
-          onFocus={(e) => e.target.style.borderColor = '#ff0066'}
-          onBlur={(e) => e.target.style.borderColor = 'rgba(255, 255, 255, 0.2)'}
+          onFocus={(e) => {
+            e.target.style.borderColor = '#ff0066';
+            e.target.style.boxShadow = '0 0 0 3px rgba(255, 0, 102, 0.1)';
+          }}
+          onBlur={(e) => {
+            e.target.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+            e.target.style.boxShadow = 'none';
+          }}
         />
         <input
           type="password"
@@ -162,36 +164,51 @@ export const LoginComponent = () => {
           placeholder="Password"
           required
           style={{
-            padding: '14px 18px',
-            fontSize: '16px',
+            padding: '16px 20px',
+            fontSize: '15px',
             borderRadius: '8px',
-            border: '1px solid rgba(255, 255, 255, 0.2)',
-            background: 'rgba(0, 0, 0, 0.3)',
+            border: '1px solid rgba(255, 255, 255, 0.15)',
+            background: 'transparent',
             color: '#ffffff',
             outline: 'none',
-            transition: 'all 0.3s ease'
+            transition: 'all 0.3s ease',
+            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
           }}
-          onFocus={(e) => e.target.style.borderColor = '#ff0066'}
-          onBlur={(e) => e.target.style.borderColor = 'rgba(255, 255, 255, 0.2)'}
+          onFocus={(e) => {
+            e.target.style.borderColor = '#ff0066';
+            e.target.style.boxShadow = '0 0 0 3px rgba(255, 0, 102, 0.1)';
+          }}
+          onBlur={(e) => {
+            e.target.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+            e.target.style.boxShadow = 'none';
+          }}
         />
         <button
           type="submit"
           style={{
-            padding: '14px',
-            fontSize: '16px',
+            padding: '16px',
+            fontSize: '15px',
             fontWeight: '600',
             borderRadius: '8px',
             border: 'none',
             background: 'linear-gradient(135deg, #ff0066 0%, #ff3399 100%)',
             color: '#ffffff',
             cursor: 'pointer',
-            transition: 'all 0.3s ease',
-            marginTop: '8px'
+            transition: 'all 0.2s ease',
+            marginTop: '8px',
+            boxShadow: '0 4px 14px rgba(255, 0, 102, 0.3)',
+            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
           }}
-          onMouseOver={(e) => e.target.style.transform = 'translateY(-2px)'}
-          onMouseOut={(e) => e.target.style.transform = 'translateY(0)'}
+          onMouseOver={(e) => {
+            e.target.style.transform = 'translateY(-2px)';
+            e.target.style.boxShadow = '0 6px 20px rgba(255, 0, 102, 0.4)';
+          }}
+          onMouseOut={(e) => {
+            e.target.style.transform = 'translateY(0)';
+            e.target.style.boxShadow = '0 4px 14px rgba(255, 0, 102, 0.3)';
+          }}
         >
-          Login
+          Sign In
         </button>
       </form>
     </div>
