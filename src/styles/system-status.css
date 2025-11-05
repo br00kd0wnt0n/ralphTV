@@ -110,6 +110,7 @@
 
 .status-indicator.status-unknown {
   color: var(--text-tertiary);
+  opacity: 0.5;
 }
 
 .service-name {

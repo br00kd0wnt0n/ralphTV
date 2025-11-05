@@ -783,7 +783,201 @@ app.get('/api/relay/healthz', async (req, res) => {
   }
 });
 
-// Debug endpoint to check ON AIR status
+// System status endpoint - checks all services in order
+app.get('/api/system/status', async (req, res) => {
+  const status = {
+    timestamp: new Date().toISOString(),
+    services: []
+  };
+
+  // 1. Backend (always online if responding)
+  status.services.push({
+    name: 'Backend API',
+    status: 'online',
+    message: 'Responding'
+  });
+
+  // 2. Database
+  try {
+    await pool.query('SELECT 1');
+    status.services.push({
+      name: 'Database',
+      status: 'online',
+      message: 'Connected'
+    });
+  } catch (e) {
+    status.services.push({
+      name: 'Database',
+      status: 'error',
+      message: e.message
+    });
+  }
+
+  // 3. Relay Service
+  if (!RELAY_URL) {
+    status.services.push({
+      name: 'Relay Service',
+      status: 'offline',
+      message: 'Not configured'
+    });
+  } else {
+    try {
+      const healthRes = await fetch(`${RELAY_URL}/healthz`, { timeout: 3000 });
+      if (healthRes.ok) {
+        status.services.push({
+          name: 'Relay Service',
+          status: 'online',
+          message: 'Healthy'
+        });
+      } else {
+        status.services.push({
+          name: 'Relay Service',
+          status: 'error',
+          message: `HTTP ${healthRes.status}`
+        });
+      }
+    } catch (e) {
+      status.services.push({
+        name: 'Relay Service',
+        status: 'offline',
+        message: 'Unreachable'
+      });
+    }
+  }
+
+  // 4. Streamer Service
+  const STREAMER_URL = process.env.STREAMER_URL || '';
+  if (!STREAMER_URL) {
+    status.services.push({
+      name: 'Streamer Service',
+      status: 'offline',
+      message: 'Not configured'
+    });
+  } else {
+    try {
+      const streamerRes = await fetch(`${STREAMER_URL}/health`, { timeout: 3000 });
+      if (streamerRes.ok) {
+        const streamerData = await streamerRes.json();
+        status.services.push({
+          name: 'Streamer Service',
+          status: 'online',
+          message: streamerData.streaming ? 'Streaming' : 'Ready'
+        });
+      } else {
+        status.services.push({
+          name: 'Streamer Service',
+          status: 'error',
+          message: `HTTP ${streamerRes.status}`
+        });
+      }
+    } catch (e) {
+      status.services.push({
+        name: 'Streamer Service',
+        status: 'offline',
+        message: 'Unreachable'
+      });
+    }
+  }
+
+  // 5. HLS Stream (check if relay is receiving and generating segments)
+  if (RELAY_URL) {
+    try {
+      const statusRes = await fetch(`${RELAY_URL}/api/status`, { timeout: 3000 });
+      const statusData = await statusRes.json();
+
+      if (statusData.streaming) {
+        // Verify HLS manifest exists
+        try {
+          const hlsRes = await fetch(`${RELAY_URL}/hls/stream.m3u8`, { timeout: 3000 });
+          if (hlsRes.ok) {
+            const text = await hlsRes.text();
+            if (text.includes('#EXTM3U')) {
+              status.services.push({
+                name: 'HLS Stream',
+                status: 'online',
+                message: 'Live segments available'
+              });
+            } else {
+              status.services.push({
+                name: 'HLS Stream',
+                status: 'error',
+                message: 'Invalid manifest'
+              });
+            }
+          } else {
+            status.services.push({
+              name: 'HLS Stream',
+              status: 'error',
+              message: 'Manifest not found'
+            });
+          }
+        } catch (e) {
+          status.services.push({
+            name: 'HLS Stream',
+            status: 'error',
+            message: 'Manifest check failed'
+          });
+        }
+      } else {
+        status.services.push({
+          name: 'HLS Stream',
+          status: 'offline',
+          message: 'Not streaming'
+        });
+      }
+    } catch (e) {
+      status.services.push({
+        name: 'HLS Stream',
+        status: 'unknown',
+        message: 'Status unknown'
+      });
+    }
+  } else {
+    status.services.push({
+      name: 'HLS Stream',
+      status: 'offline',
+      message: 'Relay not configured'
+    });
+  }
+
+  // 6. YouTube Push
+  if (RELAY_URL) {
+    try {
+      const destRes = await fetch(`${RELAY_URL}/api/destinations`, { timeout: 3000 });
+      const destData = await destRes.json();
+
+      if (destData.destinations && destData.destinations.includes('youtube')) {
+        status.services.push({
+          name: 'YouTube Push',
+          status: 'online',
+          message: 'Configured and pushing'
+        });
+      } else {
+        status.services.push({
+          name: 'YouTube Push',
+          status: 'offline',
+          message: 'Not configured'
+        });
+      }
+    } catch (e) {
+      status.services.push({
+        name: 'YouTube Push',
+        status: 'unknown',
+        message: 'Status unknown'
+      });
+    }
+  } else {
+    status.services.push({
+      name: 'YouTube Push',
+      status: 'offline',
+      message: 'Relay not configured'
+    });
+  }
+
+  res.json(status);
+});
+
+// Legacy debug endpoint (kept for compatibility)
 app.get('/api/debug/on-air', async (req, res) => {
   const checks = {
     relayConfigured: !!RELAY_URL,

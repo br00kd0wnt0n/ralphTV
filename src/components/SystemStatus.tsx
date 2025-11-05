@@ -1,164 +1,62 @@
 import React, { useEffect, useState } from 'react';
 import { CONFIG } from '../config';
-import { streamerStatus } from '../api/streamer';
-import { getRelayStatus, checkRelayHealth } from '../api/relay';
 import '../styles/system-status.css';
 
 interface ServiceStatus {
   name: string;
   status: 'online' | 'offline' | 'error' | 'unknown';
-  message?: string;
-  lastCheck?: Date;
+  message: string;
+}
+
+interface SystemStatusResponse {
+  timestamp: string;
+  services: ServiceStatus[];
 }
 
 export default function SystemStatus() {
-  const [services, setServices] = useState<ServiceStatus[]>([
-    { name: 'API Server', status: 'unknown' },
-    { name: 'Streamer', status: 'unknown' },
-    { name: 'Relay Service', status: 'unknown' },
-    { name: 'YouTube Ingest', status: 'unknown' },
-    { name: 'Web Player', status: 'unknown' },
-  ]);
+  const [services, setServices] = useState<ServiceStatus[]>([]);
+  const [lastCheck, setLastCheck] = useState<Date | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const checkServices = async () => {
-      const newStatuses: ServiceStatus[] = [];
-
-      // Check API Server
-      if (CONFIG.API_BASE_URL) {
-        try {
-          const response = await fetch(`${CONFIG.API_BASE_URL}/health`).catch(() => null);
-          newStatuses.push({
-            name: 'API Server',
-            status: response?.ok ? 'online' : 'offline',
-            message: response?.ok ? CONFIG.API_BASE_URL : 'Unreachable',
-            lastCheck: new Date()
-          });
-        } catch {
-          newStatuses.push({
-            name: 'API Server',
-            status: 'offline',
-            message: 'Connection failed',
-            lastCheck: new Date()
-          });
-        }
-      } else {
-        newStatuses.push({
-          name: 'API Server',
+      if (!CONFIG.API_BASE_URL) {
+        setServices([{
+          name: 'Backend API',
           status: 'offline',
-          message: 'Not configured',
-          lastCheck: new Date()
-        });
+          message: 'Not configured'
+        }]);
+        setLoading(false);
+        return;
       }
 
-      // Check Streamer
       try {
-        const status = await streamerStatus();
-        newStatuses.push({
-          name: 'Streamer',
-          status: status.running ? 'online' : 'offline',
-          message: status.running ? 'Running' : 'Stopped',
-          lastCheck: new Date()
-        });
-      } catch {
-        newStatuses.push({
-          name: 'Streamer',
-          status: 'error',
-          message: 'Error fetching status',
-          lastCheck: new Date()
-        });
-      }
-
-      // Check Relay
-      if (CONFIG.RELAY_BASE_URL) {
-        try {
-          const health = await checkRelayHealth();
-          const status = await getRelayStatus().catch(() => null);
-          newStatuses.push({
-            name: 'Relay Service',
-            status: health.available ? 'online' : 'offline',
-            message: status?.streaming ? 'Streaming' : 'Ready',
-            lastCheck: new Date()
-          });
-        } catch {
-          newStatuses.push({
-            name: 'Relay Service',
-            status: 'offline',
-            message: 'Unavailable',
-            lastCheck: new Date()
-          });
-        }
-      } else {
-        newStatuses.push({
-          name: 'Relay Service',
-          status: 'offline',
-          message: 'Not configured',
-          lastCheck: new Date()
-        });
-      }
-
-      // Check YouTube (based on relay destinations)
-      try {
-        if (CONFIG.RELAY_BASE_URL) {
-          const destResponse = await fetch(`${CONFIG.RELAY_BASE_URL}/api/destinations`).catch(() => null);
-          const destData = await destResponse?.json().catch(() => null);
-          const hasYouTube = destData?.destinations?.some((d: string) => d.toLowerCase().includes('youtube'));
-          newStatuses.push({
-            name: 'YouTube Ingest',
-            status: hasYouTube ? 'online' : 'offline',
-            message: hasYouTube ? 'Configured' : 'Not configured',
-            lastCheck: new Date()
-          });
+        const response = await fetch(`${CONFIG.API_BASE_URL}/api/system/status`);
+        if (response.ok) {
+          const data: SystemStatusResponse = await response.json();
+          setServices(data.services);
+          setLastCheck(new Date(data.timestamp));
         } else {
-          newStatuses.push({
-            name: 'YouTube Ingest',
-            status: 'offline',
-            message: 'Relay not configured',
-            lastCheck: new Date()
-          });
+          // Backend is reachable but returned error
+          setServices([{
+            name: 'Backend API',
+            status: 'error',
+            message: `HTTP ${response.status}`
+          }]);
         }
-      } catch {
-        newStatuses.push({
-          name: 'YouTube Ingest',
-          status: 'unknown',
-          message: 'Unable to check',
-          lastCheck: new Date()
-        });
-      }
-
-      // Check Web Player (HLS stream availability)
-      if (CONFIG.RELAY_BASE_URL) {
-        try {
-          const streamUrl = `${CONFIG.RELAY_BASE_URL}/hls/stream.m3u8`;
-          const response = await fetch(streamUrl, { method: 'HEAD' }).catch(() => null);
-          newStatuses.push({
-            name: 'Web Player',
-            status: response?.ok ? 'online' : 'offline',
-            message: response?.ok ? 'Stream available' : 'No stream',
-            lastCheck: new Date()
-          });
-        } catch {
-          newStatuses.push({
-            name: 'Web Player',
-            status: 'offline',
-            message: 'Stream unavailable',
-            lastCheck: new Date()
-          });
-        }
-      } else {
-        newStatuses.push({
-          name: 'Web Player',
+      } catch (error) {
+        // Backend is unreachable
+        setServices([{
+          name: 'Backend API',
           status: 'offline',
-          message: 'Relay not configured',
-          lastCheck: new Date()
-        });
+          message: 'Unreachable'
+        }]);
       }
-
-      setServices(newStatuses);
+      setLoading(false);
     };
 
     checkServices();
-    const interval = setInterval(checkServices, 10000); // Check every 10 seconds
+    const interval = setInterval(checkServices, 5000); // Check every 5 seconds
 
     return () => clearInterval(interval);
   }, []);
@@ -166,32 +64,20 @@ export default function SystemStatus() {
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'online':
-        return '●'; // Green - fully operational
+        return '●'; // Green dot - fully operational
       case 'offline':
-        return '○'; // Gray - not available
+        return '○'; // Gray circle - not available
       case 'error':
-        return '⚠'; // Orange/Yellow - error state
+        return '●'; // Orange dot - error state
+      case 'unknown':
+        return '○'; // Gray circle - unknown
       default:
-        return '?'; // Unknown
+        return '?';
     }
   };
 
-  const getStatusLabel = (status: string, message?: string) => {
-    switch (status) {
-      case 'online':
-        return message || 'Online';
-      case 'offline':
-        return message || 'Offline';
-      case 'error':
-        return message || 'Error';
-      default:
-        return message || 'Unknown';
-    }
-  };
-
-  const overallHealth = services.every(s => s.status === 'online' || s.status === 'offline')
-    ? services.filter(s => s.status === 'online').length
-    : 0;
+  const onlineCount = services.filter(s => s.status === 'online').length;
+  const totalCount = services.length;
 
   return (
     <div className="system-status-container">
@@ -199,29 +85,40 @@ export default function SystemStatus() {
         <h4>System Status</h4>
       </div>
       <div className="system-status-content">
-        <div className="system-health-summary">
-          <span className="health-label">Services Online:</span>
-          <span className="health-value">{overallHealth} / {services.length}</span>
-        </div>
-        <div className="service-list">
-          {services.map((service, idx) => (
-            <div key={idx} className={`service-item service-${service.status}`}>
-              <div className="service-status">
-                <span className={`status-indicator status-${service.status}`} title={`Status: ${service.status}`}>
-                  {getStatusIcon(service.status)}
-                </span>
-                <span className="service-name">{service.name}</span>
-                <span className={`status-label status-label-${service.status}`}>
-                  {getStatusLabel(service.status, service.message)}
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
-        {services.length > 0 && services[0].lastCheck && (
-          <div className="last-check">
-            Last updated: {services[0].lastCheck.toLocaleTimeString()}
+        {loading ? (
+          <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+            Checking services...
           </div>
+        ) : (
+          <>
+            <div className="system-health-summary">
+              <span className="health-label">Services Online:</span>
+              <span className="health-value">{onlineCount} / {totalCount}</span>
+            </div>
+            <div className="service-list">
+              {services.map((service, idx) => (
+                <div key={idx} className={`service-item service-${service.status}`}>
+                  <div className="service-status">
+                    <span
+                      className={`status-indicator status-${service.status}`}
+                      title={`${service.name}: ${service.status}`}
+                    >
+                      {getStatusIcon(service.status)}
+                    </span>
+                    <span className="service-name">{service.name}</span>
+                    <span className={`status-label status-label-${service.status}`}>
+                      {service.message}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {lastCheck && (
+              <div className="last-check">
+                Last updated: {lastCheck.toLocaleTimeString()}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
