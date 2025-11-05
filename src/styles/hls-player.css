@@ -68,6 +68,12 @@
   border: 1px solid rgba(128, 128, 128, 0.3);
 }
 
+.status-badge.status-offline {
+  background: rgba(128, 128, 128, 0.15);
+  color: var(--text-tertiary);
+  border: 1px solid rgba(128, 128, 128, 0.25);
+}
+
 .status-badge.status-initializing,
 .status-badge.status-loading {
   background: rgba(33, 150, 243, 0.2);

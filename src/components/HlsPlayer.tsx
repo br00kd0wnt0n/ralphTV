@@ -23,6 +23,7 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastProgressRef = useRef<number>(0);
   const stallCheckRef = useRef<NodeJS.Timeout | null>(null);
+  const isInitializingRef = useRef<boolean>(false);
 
   // Expose video element to parent when ready
   useEffect(() => {
@@ -98,14 +99,22 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
         hlsRef.current.destroy();
         hlsRef.current = null;
       }
+      isInitializingRef.current = false;
       setPlayerStatus('idle');
       setStatusMessage('');
+      return;
+    }
+
+    // Prevent re-initialization while already initializing
+    if (isInitializingRef.current) {
+      console.log('HLS player already initializing, skipping...');
       return;
     }
 
     const video = videoRef.current;
     if (!video) return;
 
+    isInitializingRef.current = true;
     setPlayerStatus('initializing');
     setStatusMessage('Waiting for HLS segments...');
     const streamUrl = `${CONFIG.RELAY_BASE_URL}/hls/stream.m3u8`;
@@ -138,6 +147,7 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
     // Check availability then initialize player
     checkHlsAvailability().then((available) => {
       if (!available) {
+        isInitializingRef.current = false;
         setPlayerStatus('error');
         setStatusMessage('HLS manifest not available');
         return;
@@ -183,6 +193,7 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
                 }, backoffDelay);
               } else {
                 console.error('Max retries reached, stopping HLS');
+                isInitializingRef.current = false;
                 setPlayerStatus('error');
                 setStatusMessage('Connection failed - max retries reached');
                 hls.destroy();
@@ -197,6 +208,7 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
             default:
               // Only show error for non-recoverable issues
               console.error('Fatal HLS error');
+              isInitializingRef.current = false;
               setPlayerStatus('error');
               setStatusMessage('Fatal playback error');
               hls.destroy();
@@ -214,6 +226,7 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
         setError(null);
         // Reset retry count on successful load
         retryCountRef.current = 0;
+        isInitializingRef.current = false; // Initialization complete
         setPlayerStatus('loading');
         setStatusMessage('Manifest loaded, starting playback...');
         // Auto-play when manifest is loaded
@@ -260,11 +273,16 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
       });
       video.addEventListener('error', () => {
         console.warn('Native HLS playback error');
+        isInitializingRef.current = false;
         setPlayerStatus('error');
         setStatusMessage('Playback error');
       });
+      video.addEventListener('loadedmetadata', () => {
+        isInitializingRef.current = false; // Initialization complete for Safari
+      });
     } else {
       console.warn('HLS not supported in this browser');
+      isInitializingRef.current = false;
       setPlayerStatus('error');
       setStatusMessage('HLS not supported');
     }
@@ -272,6 +290,7 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
 
     // Cleanup function
     return () => {
+      isInitializingRef.current = false;
       if (retryTimeoutRef.current) {
         clearTimeout(retryTimeoutRef.current);
         retryTimeoutRef.current = null;
@@ -283,10 +302,7 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
     };
   }, [streaming, relayAvailable, playerStatus]);
 
-  // Don't show player if relay is not available (suppress UI errors)
-  if (!relayAvailable) {
-    return null;
-  }
+  // Always show player container, even if relay unavailable (show status instead)
 
   return (
     <div className="hls-player-container">
@@ -319,13 +335,19 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
         />
       </div>
 
-      {!streaming && (
+      {!relayAvailable && (
+        <div className="hls-player-status">
+          <div className="status-badge status-offline">Relay service unavailable</div>
+        </div>
+      )}
+
+      {relayAvailable && !streaming && (
         <div className="hls-player-status">
           <div className="status-badge status-idle">Waiting for stream...</div>
         </div>
       )}
 
-      {streaming && statusMessage && (
+      {relayAvailable && streaming && statusMessage && (
         <div className="hls-player-status">
           <div className={`status-badge status-${playerStatus}`}>
             {statusMessage}
@@ -333,7 +355,7 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
         </div>
       )}
 
-      {streaming && !statusMessage && !isPlaying && (
+      {relayAvailable && streaming && !statusMessage && !isPlaying && (
         <div className="hls-player-status">
           <div className="status-badge status-idle">Click video to play</div>
         </div>
