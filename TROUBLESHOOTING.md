@@ -43,21 +43,42 @@ ffmpeg -re -i test.mp4 \
 
 ### Common Issues
 
-1. **Invalid Stream Key**
+1. **RTMP Handshake Failure - "digest not found"**
+   - **Error Pattern in Relay Logs**:
+     ```
+     relay: create push url='a.rtmp.youtube.com/live2/xxxx-xxxx-xxxx'
+     handshake: digest not found
+     deleteStream
+     disconnect
+     ```
+   - **What it means**: YouTube is rejecting the RTMP authentication handshake
+   - **Causes**:
+     - Invalid or expired stream key
+     - Stream key copied incorrectly (extra spaces, missing characters)
+     - YouTube Live stream not in "Ready to stream" state
+     - Stream key regenerated in YouTube Studio but not updated in Railway
+   - **Fix**:
+     1. Go to YouTube Studio → Go Live → Stream Settings
+     2. Verify the Stream Key matches exactly what's in `RELAY_PUSH_1`
+     3. If unsure, regenerate the stream key and update Railway variable
+     4. Ensure YouTube Live stream status is "Ready to stream" not "Offline"
+     5. Restart relay service after updating stream key
+
+2. **Invalid Stream Key**
    - Error: Immediate disconnect or "Stream offline"
    - Fix: Double-check stream key in YouTube Studio
 
-2. **YouTube Server Issues**
+3. **YouTube Server Issues**
    - Error: Connection timeout or refused
    - Fix: Try different YouTube ingest server (a, b, c, or d):
      - `rtmp://a.rtmp.youtube.com/live2/...`
      - `rtmp://b.rtmp.youtube.com/live2/...`
 
-3. **Bitrate Too High**
+4. **Bitrate Too High**
    - Error: "Poor stream health" or frequent buffering
    - Fix: Reduce VIDEO_BITRATE in streamer service (try 2500k or 2000k)
 
-4. **Resolution Not Supported**
+5. **Resolution Not Supported**
    - Error: Stream rejected or poor health
    - Fix: Ensure RESOLUTION is 1920x1080 or 1280x720
 
@@ -102,12 +123,25 @@ Fixed in latest version with HLS availability check. If still occurring:
 
 ### 404 Errors on stream.m3u8
 
-Fixed in latest version. Player now waits for segments to be ready.
+Fixed in latest version (Nov 2025). Player now uses GET request with content verification.
 
-If still occurring:
-1. Verify relay service is running
-2. Check /tmp/hls directory has write permissions
-3. Verify nginx RTMP module is loaded
+**Symptom**: Console shows "HLS manifest available after 0ms" followed by repeated 404 errors
+
+**Cause**: HEAD request returned 200 OK even when manifest didn't exist yet, causing premature player initialization
+
+**Pattern**:
+- YouTube streaming works ✓
+- Standalone HLS works ✓
+- Dashboard livestream fails ✗
+
+**Fix Applied**: Changed availability check from HEAD to GET request with `#EXTM3U` content verification
+
+If still occurring after latest update:
+1. Clear browser cache and hard refresh (Cmd+Shift+R / Ctrl+Shift+F5)
+2. Check browser console for error details
+3. Verify relay service is running: `curl https://relay-xxx.up.railway.app/healthz`
+4. Check /tmp/hls directory has write permissions
+5. Verify nginx RTMP module is loaded
 
 ## Relay Service Issues
 
