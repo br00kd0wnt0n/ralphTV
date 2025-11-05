@@ -59,6 +59,13 @@ function ffmpegArgs(inputUrl, offsetSec = 0, useCopyMode = false) {
     ? (CONFIG.RTMP_TARGET || '').replace(/^rtmp:\/\//, 'rtmps://')
     : (CONFIG.RTMP_TARGET || '');
 
+  // Logo overlay requires re-encoding, so disable copy mode
+  const useLogoOverlay = LOGO_ENABLE && LOGO_EXISTS;
+  if (useLogoOverlay && useCopyMode) {
+    console.log('==> Logo overlay enabled: disabling copy mode (re-encoding required)');
+    useCopyMode = false;
+  }
+
   // Copy mode: for pre-normalized files, just stream without re-encoding
   if (useCopyMode) {
     return [
@@ -514,8 +521,12 @@ async function streamContinuous(items) {
   // Force encode mode if STREAMER_FORCE_ENCODE is set (useful for mixed audio/no-audio playlists)
   const forceEncode = (process.env.STREAMER_FORCE_ENCODE === 'true');
 
+  // Logo overlay requires re-encoding, so force encode mode
+  const useLogoOverlay = LOGO_ENABLE && LOGO_EXISTS;
+  const needsEncode = forceEncode || useLogoOverlay;
+
   let args;
-  if (allNormalized && !forceEncode) {
+  if (allNormalized && !needsEncode) {
     // COPY MODE: All assets pre-normalized, just stream without re-encoding
     console.log('==> Using COPY MODE (all assets pre-normalized)');
     args = [
@@ -527,18 +538,57 @@ async function streamContinuous(items) {
     ];
   } else {
     // ENCODE MODE: Some assets not normalized, or forced encode for audio safety
-    const reason = forceEncode ? 'forced via STREAMER_FORCE_ENCODE' : 'some assets not pre-normalized';
+    let reason = forceEncode ? 'forced via STREAMER_FORCE_ENCODE' : 'some assets not pre-normalized';
+    if (useLogoOverlay) reason = 'logo overlay enabled';
     console.log(`==> Using ENCODE MODE (${reason}) - will add silent audio if needed`);
     const [w, h] = CONFIG.RESOLUTION.split('x').map((n) => parseInt(n, 10));
+
+    // Build filter_complex with optional logo overlay
+    const videoFilter = `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`;
+    let filterComplex = '[0:a?][1:a]amerge=inputs=2,pan=stereo|c0<c0+c2|c1<c1+c3[aout]';
+    let videoMap = '0:v';
 
     // Add silent audio source, use aselect to pick real audio if exists, otherwise silent
     args = [
       '-loglevel', 'info',
       '-re', '-f', 'concat', '-safe', '0', '-i', listPath,
       '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000',
-      '-filter_complex', '[0:a?][1:a]amerge=inputs=2,pan=stereo|c0<c0+c2|c1<c1+c3[aout]',
-      '-map', '0:v',
-      '-map', '[aout]',
+    ];
+
+    // Add logo input and update filter if logo overlay enabled
+    if (useLogoOverlay) {
+      args.push('-i', LOGO_PATH);
+      const logoInputIndex = 2;
+      let logoFilter;
+
+      if (LOGO_IS_VIDEO) {
+        // MP4 logo: loop infinitely and overlay
+        logoFilter = `[0:v]${videoFilter}[v];[${logoInputIndex}:v]loop=loop=-1:size=32767,setpts=N/(${CONFIG.FPS}*TB),scale=${LOGO_SCALE}:-1,format=rgba,colorchannelmixer=aa=${LOGO_OPACITY}[logo];[v][logo]overlay=W-w-20:20:shortest=1[vout]`;
+      } else {
+        // PNG logo: static image overlay
+        logoFilter = `[0:v]${videoFilter}[v];[${logoInputIndex}:v]scale=${LOGO_SCALE}:-1,format=rgba,colorchannelmixer=aa=${LOGO_OPACITY}[logo];[v][logo]overlay=W-w-20:20[vout]`;
+      }
+
+      // Combine video and audio filters
+      filterComplex = `${logoFilter};[0:a?][1:a]amerge=inputs=2,pan=stereo|c0<c0+c2|c1<c1+c3[aout]`;
+      videoMap = '[vout]';
+
+      args.push(
+        '-filter_complex', filterComplex,
+        '-map', videoMap,
+        '-map', '[aout]',
+      );
+    } else {
+      // No logo, use simple video filter and audio filter_complex
+      args.push(
+        '-vf', videoFilter,
+        '-filter_complex', filterComplex,
+        '-map', '0:v',
+        '-map', '[aout]',
+      );
+    }
+
+    args.push(
       '-c:v', 'libx264', '-preset', CONFIG.PRESET, '-profile:v', 'high', '-pix_fmt', 'yuv420p',
       '-b:v', CONFIG.VIDEO_BITRATE, '-maxrate', CONFIG.VIDEO_BITRATE, '-bufsize', '10000k',
       '-g', String(CONFIG.GOP),
@@ -546,7 +596,6 @@ async function streamContinuous(items) {
       '-sc_threshold', '0',
       '-force_key_frames', 'expr:gte(t,n_forced*1)',
       '-r', String(CONFIG.FPS),
-      '-vf', `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`,
       '-c:a', 'aac', '-b:a', CONFIG.AUDIO_BITRATE, '-ar', '48000', '-ac', '2',
       // Removed -shortest to prevent premature stream termination in continuous mode
       '-flvflags', 'no_duration_filesize', '-f', 'flv', '-rtmp_live', 'live', target,
