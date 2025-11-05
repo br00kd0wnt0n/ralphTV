@@ -97,22 +97,103 @@ export const LoginComponent = () => {
   };
 
   return (
-    <form onSubmit={handleSubmit}>
-      <input 
-        type="email" 
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        placeholder="Email"
-        required 
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: '100vh',
+      background: 'linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%)',
+      padding: '20px'
+    }}>
+      {/* ralphTV Logo */}
+      <img
+        src="/ralph-tv-logo.png"
+        alt="ralphTV"
+        style={{
+          width: '100%',
+          maxWidth: '600px',
+          height: 'auto',
+          marginBottom: '60px',
+          borderRadius: '12px',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)'
+        }}
       />
-      <input 
-        type="password" 
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        placeholder="Password"
-        required 
-      />
-      <button type="submit">Login</button>
-    </form>
+
+      {/* Login Form */}
+      <form
+        onSubmit={handleSubmit}
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '16px',
+          width: '100%',
+          maxWidth: '400px',
+          background: 'rgba(255, 255, 255, 0.05)',
+          padding: '32px',
+          borderRadius: '12px',
+          backdropFilter: 'blur(10px)',
+          border: '1px solid rgba(255, 255, 255, 0.1)'
+        }}
+      >
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="Email"
+          required
+          style={{
+            padding: '14px 18px',
+            fontSize: '16px',
+            borderRadius: '8px',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+            background: 'rgba(0, 0, 0, 0.3)',
+            color: '#ffffff',
+            outline: 'none',
+            transition: 'all 0.3s ease'
+          }}
+          onFocus={(e) => e.target.style.borderColor = '#ff0066'}
+          onBlur={(e) => e.target.style.borderColor = 'rgba(255, 255, 255, 0.2)'}
+        />
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="Password"
+          required
+          style={{
+            padding: '14px 18px',
+            fontSize: '16px',
+            borderRadius: '8px',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+            background: 'rgba(0, 0, 0, 0.3)',
+            color: '#ffffff',
+            outline: 'none',
+            transition: 'all 0.3s ease'
+          }}
+          onFocus={(e) => e.target.style.borderColor = '#ff0066'}
+          onBlur={(e) => e.target.style.borderColor = 'rgba(255, 255, 255, 0.2)'}
+        />
+        <button
+          type="submit"
+          style={{
+            padding: '14px',
+            fontSize: '16px',
+            fontWeight: '600',
+            borderRadius: '8px',
+            border: 'none',
+            background: 'linear-gradient(135deg, #ff0066 0%, #ff3399 100%)',
+            color: '#ffffff',
+            cursor: 'pointer',
+            transition: 'all 0.3s ease',
+            marginTop: '8px'
+          }}
+          onMouseOver={(e) => e.target.style.transform = 'translateY(-2px)'}
+          onMouseOut={(e) => e.target.style.transform = 'translateY(0)'}
+        >
+          Login
+        </button>
+      </form>
+    </div>
   );
 };
