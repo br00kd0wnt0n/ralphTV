@@ -22,12 +22,75 @@
   text-transform: uppercase;
   letter-spacing: 0.8px;
   border-bottom: 1px solid var(--border-default);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .hls-player-header h4 {
   margin: 0;
   font-size: 11px;
   color: white;
+  flex-shrink: 0;
+}
+
+.header-status-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  font-size: 9px;
+  font-weight: bold;
+  border-radius: 3px;
+  font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+  text-transform: none;
+  letter-spacing: 0;
+  flex-shrink: 0;
+}
+
+/* Header badge inherits status colors from status-badge */
+.header-status-badge.status-idle {
+  background: rgba(128, 128, 128, 0.2);
+  color: var(--text-secondary);
+  border: 1px solid rgba(128, 128, 128, 0.3);
+}
+
+.header-status-badge.status-offline {
+  background: rgba(128, 128, 128, 0.15);
+  color: var(--text-tertiary);
+  border: 1px solid rgba(128, 128, 128, 0.25);
+}
+
+.header-status-badge.status-initializing,
+.header-status-badge.status-loading {
+  background: rgba(33, 150, 243, 0.2);
+  color: #42a5f5;
+  border: 1px solid rgba(33, 150, 243, 0.4);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.header-status-badge.status-playing {
+  background: rgba(76, 175, 80, 0.2);
+  color: #4caf50;
+  border: 1px solid rgba(76, 175, 80, 0.4);
+}
+
+.header-status-badge.status-buffering {
+  background: rgba(255, 193, 7, 0.2);
+  color: #ffc107;
+  border: 1px solid rgba(255, 193, 7, 0.4);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.header-status-badge.status-unstable {
+  background: rgba(255, 152, 0, 0.2);
+  color: #ff9800;
+  border: 1px solid rgba(255, 152, 0, 0.4);
+}
+
+.header-status-badge.status-error {
+  background: rgba(244, 67, 54, 0.2);
+  color: #f44336;
+  border: 1px solid rgba(244, 67, 54, 0.4);
 }
 
 .hls-player-video {

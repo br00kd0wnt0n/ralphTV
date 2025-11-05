@@ -308,6 +308,26 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
     <div className="hls-player-container">
       <div className="hls-player-header">
         <h4>Live Stream Preview</h4>
+        {relayAvailable && streaming && statusMessage && (
+          <div className={`header-status-badge status-${playerStatus}`}>
+            {statusMessage}
+          </div>
+        )}
+        {relayAvailable && streaming && !statusMessage && isPlaying && (
+          <div className="header-status-badge status-playing">
+            ● LIVE
+          </div>
+        )}
+        {!relayAvailable && (
+          <div className="header-status-badge status-offline">
+            Relay Offline
+          </div>
+        )}
+        {relayAvailable && !streaming && (
+          <div className="header-status-badge status-idle">
+            Waiting...
+          </div>
+        )}
       </div>
 
       <div className="hls-player-video">
@@ -335,27 +355,7 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
         />
       </div>
 
-      {!relayAvailable && (
-        <div className="hls-player-status">
-          <div className="status-badge status-offline">Relay service unavailable</div>
-        </div>
-      )}
-
-      {relayAvailable && !streaming && (
-        <div className="hls-player-status">
-          <div className="status-badge status-idle">Waiting for stream...</div>
-        </div>
-      )}
-
-      {relayAvailable && streaming && statusMessage && (
-        <div className="hls-player-status">
-          <div className={`status-badge status-${playerStatus}`}>
-            {statusMessage}
-          </div>
-        </div>
-      )}
-
-      {relayAvailable && streaming && !statusMessage && !isPlaying && (
+      {relayAvailable && streaming && !isPlaying && !statusMessage && (
         <div className="hls-player-status">
           <div className="status-badge status-idle">Click video to play</div>
         </div>
