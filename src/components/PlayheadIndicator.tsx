@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { getStatusToday } from '../api/status';
+import { streamerStatus } from '../api/streamer';
 import { CONFIG } from '../config';
 import type { Day, ScheduledItem, Asset } from '../state/models';
 import { durationToHeightPx } from '../state/schedule';
@@ -25,31 +25,56 @@ export default function PlayheadIndicator({
     let cancelled = false;
 
     const fetchStatus = async () => {
-      if (!CONFIG.API_BASE_URL) return;
+      // Use streamer as source of truth instead of time-based calculation
+      if (!CONFIG.STREAMER_BASE_URL) return;
+
       try {
-        const status = await getStatusToday(CONFIG.CHANNEL, CONFIG.WEEK);
+        const status = await streamerStatus();
         if (cancelled) return;
 
-        // Find which day and item is currently playing
-        if (status?.item && status?.day) {
-          const day = status.day as Day;
-          const items = schedule[day] || [];
-          const itemIndex = items.findIndex(it => it?.assetId === status.item.assetId);
+        // Check if streamer is running and has a current asset
+        if (status?.running && status?.current?.assetId) {
+          const currentAssetId = status.current.assetId;
 
-          if (itemIndex !== -1) {
-            setPlayhead({
-              day,
-              itemIndex,
-              offsetSec: status.offsetSec || 0
-            });
-          } else {
+          // Find which day and position this asset is in the schedule
+          let found = false;
+          for (const day of Object.keys(schedule) as Day[]) {
+            const items = schedule[day] || [];
+            const itemIndex = items.findIndex(it => it?.assetId === currentAssetId);
+
+            if (itemIndex !== -1) {
+              // Calculate offset based on when the asset started playing
+              let offsetSec = 0;
+              if (status.current.startedAt) {
+                const elapsed = Date.now() - status.current.startedAt;
+                offsetSec = Math.max(0, Math.floor(elapsed / 1000));
+
+                // Cap at asset duration to prevent overflow
+                const asset = assetMap.get(currentAssetId);
+                if (asset?.durationSec) {
+                  offsetSec = Math.min(offsetSec, asset.durationSec);
+                }
+              }
+
+              setPlayhead({
+                day,
+                itemIndex,
+                offsetSec
+              });
+              found = true;
+              break;
+            }
+          }
+
+          if (!found) {
             setPlayhead(null);
           }
         } else {
           setPlayhead(null);
         }
       } catch (e) {
-        // Silently handle errors
+        // Silently handle errors (streamer might be offline)
+        setPlayhead(null);
       }
     };
 
@@ -60,7 +85,7 @@ export default function PlayheadIndicator({
       cancelled = true;
       clearInterval(interval);
     };
-  }, [schedule]);
+  }, [schedule, assetMap]);
 
   // Calculate horizontal position dynamically from DOM
   useEffect(() => {
