@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import StreamStats from './StreamStats';
 import '../styles/volume-visualizer.css';
 
 interface VolumeVisualizerProps {
@@ -166,6 +167,7 @@ export default function VolumeVisualizer({ audioElement }: VolumeVisualizerProps
           </div>
         )}
       </div>
+      <StreamStats />
     </div>
   );
 }
