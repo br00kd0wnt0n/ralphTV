@@ -9,7 +9,7 @@ interface StreamStatsData {
   resolution: string;
   uptime: string;
   codec: string;
-  connections: number;
+  dropped: string;
 }
 
 export default function StreamStats() {
@@ -19,9 +19,8 @@ export default function StreamStats() {
     resolution: '--',
     uptime: '--',
     codec: '--',
-    connections: 0
+    dropped: '--'
   });
-  const [isStreaming, setIsStreaming] = useState(false);
 
   useEffect(() => {
     async function fetchStats() {
@@ -30,8 +29,6 @@ export default function StreamStats() {
           streamerStatus().catch(() => ({ running: false })),
           getRelayStatus().catch(() => ({ streaming: false }))
         ]);
-
-        setIsStreaming(streamer.running && relay.streaming);
 
         if (streamer.running && relay.streaming) {
           // Calculate uptime from session time
@@ -48,10 +45,10 @@ export default function StreamStats() {
           setStats({
             bitrate: relay.stats?.bitrate || '2500 kbps',
             fps: relay.stats?.fps || '30',
-            resolution: relay.stats?.resolution || '1920x1080',
+            resolution: relay.stats?.resolution || '1280x720',
             uptime: uptimeStr,
             codec: relay.stats?.codec || 'H.264',
-            connections: relay.stats?.connections || 1
+            dropped: relay.stats?.dropped || '0'
           });
         } else {
           setStats({
@@ -60,7 +57,7 @@ export default function StreamStats() {
             resolution: '--',
             uptime: '--',
             codec: '--',
-            connections: 0
+            dropped: '--'
           });
         }
       } catch (e) {
@@ -76,10 +73,7 @@ export default function StreamStats() {
   return (
     <div className="stream-stats-container">
       <div className="stream-stats-header">
-        <h4>Stream Stats</h4>
-        <div className={`stream-stats-indicator ${isStreaming ? 'live' : 'offline'}`}>
-          {isStreaming ? '● LIVE' : '○ OFFLINE'}
-        </div>
+        <h4>Live Stats</h4>
       </div>
       <div className="stream-stats-grid">
         <div className="stream-stat-item">
@@ -103,8 +97,8 @@ export default function StreamStats() {
           <div className="stream-stat-value">{stats.uptime}</div>
         </div>
         <div className="stream-stat-item">
-          <div className="stream-stat-label">Viewers</div>
-          <div className="stream-stat-value">{stats.connections}</div>
+          <div className="stream-stat-label">Dropped</div>
+          <div className="stream-stat-value">{stats.dropped}</div>
         </div>
       </div>
     </div>
