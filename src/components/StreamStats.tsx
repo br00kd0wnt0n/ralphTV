@@ -73,7 +73,7 @@ export default function StreamStats() {
   return (
     <div className="stream-stats-container">
       <div className="stream-stats-header">
-        <h4>Live Stats</h4>
+        <h4>LIVE STATS</h4>
       </div>
       <div className="stream-stats-grid">
         <div className="stream-stat-item">

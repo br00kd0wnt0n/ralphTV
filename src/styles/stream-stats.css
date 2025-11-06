@@ -8,16 +8,20 @@
 }
 
 .stream-stats-header {
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border-subtle);
-  background: var(--bg-secondary);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  padding: 10px 14px;
+  font-weight: 600;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  border-bottom: 1px solid var(--border-default);
 }
 
 .stream-stats-header h4 {
   margin: 0;
-  font-size: 13px;
+  font-size: 10px;
   font-weight: 600;
-  color: var(--text-primary);
 }
 
 .stream-stats-grid {
@@ -30,14 +34,14 @@
 
 .stream-stat-item {
   background: var(--bg-elevated);
-  padding: 10px 12px;
+  padding: 6px 8px;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
 }
 
 .stream-stat-label {
-  font-size: 10px;
+  font-size: 8px;
   font-weight: 500;
   color: var(--text-tertiary);
   text-transform: uppercase;
@@ -45,11 +49,11 @@
 }
 
 .stream-stat-value {
-  font-size: 13px;
+  font-size: 8px;
   font-weight: 700;
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.2px;
+  letter-spacing: -0.1px;
 }
 
 /* Responsive adjustments */
@@ -61,10 +65,14 @@
 
 @media (max-width: 480px) {
   .stream-stat-item {
-    padding: 8px 10px;
+    padding: 5px 6px;
+  }
+
+  .stream-stat-label {
+    font-size: 7px;
   }
 
   .stream-stat-value {
-    font-size: 12px;
+    font-size: 7px;
   }
 }
