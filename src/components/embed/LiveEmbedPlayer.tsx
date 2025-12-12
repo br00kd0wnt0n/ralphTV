@@ -1,0 +1,125 @@
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useHls } from '../../hooks/useHls';
+import { CONFIG } from '../../config';
+import '../../styles/embed-player.css';
+
+type View = 'mini' | 'expanded';
+
+export default function LiveEmbedPlayer() {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [view, setView] = useState<View>('mini');
+  const [playing, setPlaying] = useState(true);
+  const [videoIsPlaying, setVideoIsPlaying] = useState(false);
+  const [volume, setVolume] = useState<number>(() => {
+    const saved = typeof window !== 'undefined' ? window.localStorage.getItem('embed.vol') : null;
+    return saved ? Math.min(1, Math.max(0, Number(saved))) : 0; // default 0 (muted) to maximize autoplay
+  });
+
+  // Allow query param override: ?src=<full.m3u8> or ?relay=<base-url>
+  const srcOverride = (() => {
+    if (typeof window === 'undefined') return undefined;
+    const p = new URLSearchParams(window.location.search);
+    const src = p.get('src');
+    const relay = p.get('relay');
+    if (src) return src;
+    if (relay) return `${relay.replace(/\/$/, '')}/hls/stream.m3u8`;
+    // Allow global injection if site wants to set it inline
+    // @ts-ignore
+    const g = (window as any).RALPH_RELAY_URL;
+    if (g && typeof g === 'string') return `${g.replace(/\/$/, '')}/hls/stream.m3u8`;
+    return undefined;
+  })();
+
+  const { live, state } = useHls(videoRef.current, { enabled: true, src: srcOverride });
+  const fallbackUrl = useMemo(() => CONFIG.FALLBACK_GIF_URL || '/offline.gif', []);
+
+  // Sync initial volume/mute and persist changes
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.volume = volume;
+    v.muted = volume === 0;
+  }, [volume]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('embed.vol', String(volume));
+    }
+  }, [volume]);
+
+  // Play/pause based on intent
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (playing) v.play().catch(() => {});
+    else v.pause();
+  }, [playing]);
+
+  const toggleFullscreen = () => {
+    const el = containerRef.current;
+    if (!el) return;
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    else el.requestFullscreen?.().catch(() => {});
+  };
+
+  // Always render video so HLS can attach; show fallback overlay when clearly offline or errored.
+  const showFallback = (!videoIsPlaying && !live) || state === 'error';
+
+  return (
+    <div ref={containerRef} className={`embed-player ${view}`}>
+      {/* Video or Fallback */}
+      <div className="embed-surface">
+        <video
+          ref={videoRef}
+          playsInline
+          autoPlay
+          muted={volume === 0}
+          onClick={() => view === 'expanded' && setPlaying(p => !p)}
+          crossOrigin="anonymous"
+          onPlay={() => setVideoIsPlaying(true)}
+          onPause={() => setVideoIsPlaying(false)}
+        />
+        {showFallback && (
+          <img className="embed-fallback overlay" src={fallbackUrl} alt="Live stream offline" />
+        )}
+
+        {/* Mini: expand only */}
+        {view === 'mini' && (
+          <button className="btn expand" aria-label="Expand player" onClick={() => setView('expanded')}>
+            ⛶
+          </button>
+        )}
+
+        {/* Expanded controls: play/pause overlay, volume, fullscreen */}
+        {view === 'expanded' && (
+          <>
+            <button
+              className="overlay center-toggle"
+              aria-label={playing ? 'Pause' : 'Play'}
+              onClick={() => setPlaying(p => !p)}
+            >
+              {playing ? '⏸' : '▶️'}
+            </button>
+            <div className="overlay bottom-bar">
+              <div className="vol">
+                <span>🔊</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value={volume}
+                  onChange={(e) => setVolume(parseFloat(e.target.value))}
+                />
+              </div>
+              <div className="spacer" />
+              <button className="btn" aria-label="Fullscreen" onClick={toggleFullscreen}>⛶</button>
+              <button className="btn" aria-label="Minimize" onClick={() => setView('mini')}>—</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}

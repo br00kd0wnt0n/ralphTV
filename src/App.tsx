@@ -1,7 +1,17 @@
 import ContentScheduler from './components/ContentScheduler';
 import Protected from './auth/Protected';
+import LiveEmbedPlayer from './components/embed/LiveEmbedPlayer';
 
 function App() {
+  // Lightweight route switch for the public embed page (no auth)
+  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/embed')) {
+    return (
+      <div style={{ width: '100vw', height: '100vh', background: 'transparent' }}>
+        <LiveEmbedPlayer />
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="app-header">

@@ -5,10 +5,21 @@ import { AuthProvider } from './auth';
 import './auth/axios-base';
 import './styles/index.css';
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <AuthProvider>
+const isEmbed = typeof window !== 'undefined' && window.location.pathname.startsWith('/embed');
+
+const root = ReactDOM.createRoot(document.getElementById('root')!);
+if (isEmbed) {
+  root.render(
+    <React.StrictMode>
       <App />
-    </AuthProvider>
-  </React.StrictMode>
-);
+    </React.StrictMode>
+  );
+} else {
+  root.render(
+    <React.StrictMode>
+      <AuthProvider>
+        <App />
+      </AuthProvider>
+    </React.StrictMode>
+  );
+}

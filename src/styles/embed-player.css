@@ -1,0 +1,101 @@
+/* Minimal floating embed player: mini and expanded */
+
+.embed-player {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 9999;
+  color: #fff;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+}
+
+.embed-player .embed-surface {
+  position: relative;
+  background: #000;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.45);
+  border: 1px solid rgba(255,255,255,0.08);
+  /* gentle float animation */
+  animation: embed-float 6s ease-in-out infinite;
+}
+
+.embed-player.mini .embed-surface { width: 220px; height: 124px; }
+.embed-player.expanded .embed-surface { width: min(78vw, 960px); height: calc(min(78vw, 960px) * 9 / 16); }
+
+.embed-player video,
+.embed-player .embed-fallback {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  background: #000;
+}
+
+.embed-player .embed-fallback.overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Controls */
+.embed-player .btn {
+  background: rgba(0,0,0,0.5);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 8px;
+  padding: 6px 8px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.embed-player .btn:hover { background: rgba(0,0,0,0.65); }
+
+.embed-player .expand {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+}
+
+.embed-player .overlay.center-toggle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0,0,0,0.55);
+  border-radius: 50%;
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255,255,255,0.2);
+  font-size: 20px;
+}
+
+.embed-player .overlay.bottom-bar {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  background: linear-gradient(0deg, rgba(0,0,0,0.65), rgba(0,0,0,0));
+}
+
+.embed-player .overlay .vol { display: flex; align-items: center; gap: 8px; }
+.embed-player .overlay .vol input[type="range"] {
+  width: 140px;
+  accent-color: #ff2e7e;
+}
+.embed-player .overlay .spacer { flex: 1; }
+
+@media (max-width: 720px) {
+  .embed-player.expanded .embed-surface { width: 94vw; height: calc(94vw * 9 / 16); }
+}
+
+@keyframes embed-float {
+  0% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+  100% { transform: translateY(0); }
+}

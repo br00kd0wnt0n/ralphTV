@@ -24,4 +24,5 @@ export const CONFIG = {
   REALTIME_URL: ensureWsProtocol(import.meta.env.VITE_REALTIME_URL || ''),
   STREAMER_BASE_URL: ensureProtocol(import.meta.env.VITE_STREAMER_BASE_URL || ''),
   RELAY_BASE_URL: ensureProtocol(import.meta.env.VITE_RELAY_BASE_URL || ''),
+  FALLBACK_GIF_URL: ensureProtocol(import.meta.env.VITE_FALLBACK_GIF_URL || '')
 };
