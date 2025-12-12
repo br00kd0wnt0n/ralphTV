@@ -11,6 +11,7 @@ export default function LiveEmbedPlayer() {
   const [view, setView] = useState<View>('mini');
   const [playing, setPlaying] = useState(true);
   const [videoIsPlaying, setVideoIsPlaying] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [volume, setVolume] = useState<number>(() => {
     const saved = typeof window !== 'undefined' ? window.localStorage.getItem('embed.vol') : null;
     return saved ? Math.min(1, Math.max(0, Number(saved))) : 0; // default 0 (muted) to maximize autoplay
@@ -31,7 +32,7 @@ export default function LiveEmbedPlayer() {
     return undefined;
   })();
 
-  const { live, state } = useHls(videoRef.current, { enabled: true, src: srcOverride });
+  const { live, state } = useHls(videoRef.current, { enabled: true, src: srcOverride, statusIntervalMs: 2000 });
   const fallbackUrl = useMemo(() => CONFIG.FALLBACK_GIF_URL || '/offline.gif', []);
 
   // Sync initial volume/mute and persist changes
@@ -63,26 +64,42 @@ export default function LiveEmbedPlayer() {
     else el.requestFullscreen?.().catch(() => {});
   };
 
+  useEffect(() => {
+    const onFs = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onFs);
+    // @ts-ignore Safari
+    document.addEventListener('webkitfullscreenchange', onFs);
+    return () => {
+      document.removeEventListener('fullscreenchange', onFs);
+      // @ts-ignore Safari
+      document.removeEventListener('webkitfullscreenchange', onFs);
+    };
+  }, []);
+
   // Always render video so HLS can attach; show fallback overlay when clearly offline or errored.
   const showFallback = (!videoIsPlaying && !live) || state === 'error';
 
   return (
-    <div ref={containerRef} className={`embed-player ${view}`}>
-      {/* Video or Fallback */}
-      <div className="embed-surface">
-        <video
-          ref={videoRef}
-          playsInline
-          autoPlay
-          muted={volume === 0}
-          onClick={() => view === 'expanded' && setPlaying(p => !p)}
-          crossOrigin="anonymous"
-          onPlay={() => setVideoIsPlaying(true)}
-          onPause={() => setVideoIsPlaying(false)}
-        />
-        {showFallback && (
-          <img className="embed-fallback overlay" src={fallbackUrl} alt="Live stream offline" />
-        )}
+    <div ref={containerRef} className={`embed-player ${view} ${isFullscreen ? 'fullscreen-active' : ''}`}>
+      {/* Retro surround surface */}
+      <div className="embed-surface retro-surround">
+        <div className="retro-body">
+          <div className="screen">
+            <video
+              ref={videoRef}
+              playsInline
+              autoPlay
+              muted={volume === 0}
+              onClick={() => view === 'expanded' && setPlaying(p => !p)}
+              crossOrigin="anonymous"
+              onPlay={() => setVideoIsPlaying(true)}
+              onPause={() => setVideoIsPlaying(false)}
+            />
+            {showFallback && (
+              <img className="embed-fallback overlay" src={fallbackUrl} alt="Live stream offline" />
+            )}
+          </div>
+        </div>
 
         {/* Mini: expand only */}
         {view === 'mini' && (
