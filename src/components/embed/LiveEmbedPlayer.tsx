@@ -10,6 +10,7 @@ export default function LiveEmbedPlayer() {
   const [playing, setPlaying] = useState(true);
   const [videoIsPlaying, setVideoIsPlaying] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showControls, setShowControls] = useState(false);
   // Fixed landscape 16:9 for v1
   const [volume, setVolume] = useState<number>(() => {
     const saved = typeof window !== 'undefined' ? window.localStorage.getItem('embed.vol') : null;
@@ -76,11 +77,33 @@ export default function LiveEmbedPlayer() {
     };
   }, []);
 
-  // Always render video so HLS can attach; show fallback overlay when clearly offline or errored.
-  const showFallback = (!videoIsPlaying && !live) || state === 'error';
+  // Replace video with fallback when stream is not live or errored
+  const showFallback = (!live) || state === 'error';
+
+  // Pause video when showing fallback
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (showFallback) {
+      try { v.pause(); } catch {}
+      setVideoIsPlaying(false);
+    }
+  }, [showFallback]);
+
+  // Auto-hide center controls shortly after activity
+  useEffect(() => {
+    if (!showControls) return;
+    const t = setTimeout(() => setShowControls(false), 2000);
+    return () => clearTimeout(t);
+  }, [showControls]);
 
   return (
-    <div ref={containerRef} className={`embed-simple ${isFullscreen ? 'fullscreen-active' : ''}`}>
+    <div
+      ref={containerRef}
+      className={`embed-simple ${isFullscreen ? 'fullscreen-active' : ''}`}
+      onMouseMove={() => setShowControls(true)}
+      onTouchStart={() => setShowControls(true)}
+    >
       <div className={`player-box landscape`}>
         <video
           ref={videoRef}
@@ -91,6 +114,7 @@ export default function LiveEmbedPlayer() {
           crossOrigin="anonymous"
           onPlay={() => setVideoIsPlaying(true)}
           onPause={() => setVideoIsPlaying(false)}
+          style={{ display: showFallback ? 'none' : 'block' }}
         />
         {showFallback && (
           <img className="embed-fallback overlay" src={fallbackUrl} alt="Live stream offline" />
@@ -98,13 +122,15 @@ export default function LiveEmbedPlayer() {
         {/* Overlays omitted in v1 push */}
 
         {/* Controls */}
-        <button
-          className="overlay center-toggle"
-          aria-label={playing ? 'Pause' : 'Play'}
-          onClick={() => setPlaying(p => !p)}
-        >
-          {playing ? '⏸' : '▶️'}
-        </button>
+        {!showFallback && ((!videoIsPlaying || !playing || showControls) && (
+          <button
+            className="overlay center-toggle"
+            aria-label={playing ? 'Pause' : 'Play'}
+            onClick={() => setPlaying(p => !p)}
+          >
+            {playing ? '⏸' : '▶️'}
+          </button>
+        ))}
         <div className="overlay bottom-bar">
           <div className="vol">
             <span>🔊</span>
