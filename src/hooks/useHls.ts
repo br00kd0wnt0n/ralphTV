@@ -61,6 +61,10 @@ export function useHls(video: HTMLVideoElement | null, opts: UseHlsOpts = {}) {
         const allFalse = [backendLive, probeLive].every(v => v === false);
         if (anyLive) setLive(true);
         else if (allFalse) setLive(false);
+        // Light retry nudge when offline
+        if (!anyLive && hlsRef.current) {
+          try { hlsRef.current.startLoad(-1); } catch {}
+        }
         // Do not force state to 'offline' here; render logic can show fallback while allowing attach to proceed.
       } catch {
         if (mounted) setLive(false);

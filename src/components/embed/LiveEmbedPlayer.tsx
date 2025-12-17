@@ -114,11 +114,15 @@ export default function LiveEmbedPlayer() {
           crossOrigin="anonymous"
           onPlay={() => setVideoIsPlaying(true)}
           onPause={() => setVideoIsPlaying(false)}
-          style={{ display: showFallback ? 'none' : 'block' }}
+          className="fade"
+          style={{ opacity: showFallback ? 0 : 1 }}
         />
-        {showFallback && (
-          <img className="embed-fallback overlay" src={fallbackUrl} alt="Live stream offline" />
-        )}
+        <img
+          className="embed-fallback overlay fade"
+          src={fallbackUrl}
+          alt="Live stream offline"
+          style={{ opacity: showFallback ? 1 : 0 }}
+        />
         {/* Overlays omitted in v1 push */}
 
         {/* Controls */}
