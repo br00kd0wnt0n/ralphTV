@@ -108,6 +108,17 @@
   cursor: pointer;
 }
 
+/* Fallback overlay image to mirror viewer experience */
+.hls-fallback-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  transition: opacity 240ms ease;
+}
+
 .hls-player-status {
   padding: 8px;
   display: flex;

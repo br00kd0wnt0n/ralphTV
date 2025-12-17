@@ -24,6 +24,7 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
   const lastProgressRef = useRef<number>(0);
   const stallCheckRef = useRef<NodeJS.Timeout | null>(null);
   const isInitializingRef = useRef<boolean>(false);
+  const fallbackUrl = React.useMemo(() => CONFIG.FALLBACK_GIF_URL || '/offline.gif', []);
 
   // Expose video element to parent when ready
   useEffect(() => {
@@ -344,6 +345,7 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
           playsInline
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}
+          style={{ opacity: (relayAvailable && streaming && playerStatus !== 'error') ? 1 : 0, transition: 'opacity 240ms ease' }}
           onClick={(e) => {
             // Allow click to play if autoplay was blocked or video is paused
             const video = e.currentTarget;
@@ -359,6 +361,13 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
               video.pause();
             }
           }}
+        />
+        {/* Fallback overlay to mimic viewer experience when stream is offline */}
+        <img
+          src={fallbackUrl}
+          alt="Stream offline"
+          className="hls-fallback-overlay"
+          style={{ opacity: (!relayAvailable || !streaming || playerStatus === 'error') ? 1 : 0 }}
         />
       </div>
 
