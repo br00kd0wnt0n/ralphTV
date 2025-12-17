@@ -97,6 +97,16 @@ export default function LiveEmbedPlayer() {
     return () => clearTimeout(t);
   }, [showControls]);
 
+  // When stream becomes live, attempt autoplay if user intent is playing
+  useEffect(() => {
+    if (!live) return;
+    const v = videoRef.current;
+    if (!v) return;
+    if (playing) {
+      v.play().catch(() => {});
+    }
+  }, [live, playing]);
+
   return (
     <div
       ref={containerRef}

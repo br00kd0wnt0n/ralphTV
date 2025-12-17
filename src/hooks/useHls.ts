@@ -64,7 +64,7 @@ export function useHls(video: HTMLVideoElement | null, opts: UseHlsOpts = {}) {
         else if (allFalse) setLive(false);
         // Gate network activity to avoid hammering relay when offline
         if (hlsRef.current) {
-          if (anyLive && stoppedRef.current) {
+          if (anyLive) {
             try { hlsRef.current.startLoad(-1); stoppedRef.current = false; } catch {}
           } else if (allFalse && !stoppedRef.current) {
             try { hlsRef.current.stopLoad(); stoppedRef.current = true; } catch {}
