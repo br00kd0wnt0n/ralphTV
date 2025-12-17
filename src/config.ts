@@ -24,5 +24,8 @@ export const CONFIG = {
   REALTIME_URL: ensureWsProtocol(import.meta.env.VITE_REALTIME_URL || ''),
   STREAMER_BASE_URL: ensureProtocol(import.meta.env.VITE_STREAMER_BASE_URL || ''),
   RELAY_BASE_URL: ensureProtocol(import.meta.env.VITE_RELAY_BASE_URL || ''),
-  FALLBACK_GIF_URL: ensureProtocol(import.meta.env.VITE_FALLBACK_GIF_URL || '')
+  RELAY_LANDSCAPE_PATH: import.meta.env.VITE_RELAY_LANDSCAPE_PATH || '/hls/stream.m3u8',
+  RELAY_PORTRAIT_PATH: import.meta.env.VITE_RELAY_PORTRAIT_PATH || '/hls/stream_portrait.m3u8',
+  FALLBACK_GIF_URL: ensureProtocol(import.meta.env.VITE_FALLBACK_GIF_URL || ''),
+  DISABLE_AUTH: (import.meta.env.VITE_DISABLE_AUTH ?? 'false') === 'true'
 };

@@ -1,6 +1,7 @@
 import ContentScheduler from './components/ContentScheduler';
 import Protected from './auth/Protected';
 import LiveEmbedPlayer from './components/embed/LiveEmbedPlayer';
+import { CONFIG } from './config';
 
 function App() {
   // Lightweight route switch for the public embed page (no auth)
@@ -12,15 +13,23 @@ function App() {
     );
   }
 
-  return (
-    <div>
+  const body = (
+    <>
       <div className="app-header">
         <img src="/ralph-tv-logo.png" alt="RalphTV" className="app-logo" />
         <h1>RalphTV BROADCASTER</h1>
       </div>
-      <Protected>
-        <ContentScheduler />
-      </Protected>
+      <ContentScheduler />
+    </>
+  );
+
+  return (
+    <div>
+      {CONFIG.DISABLE_AUTH ? body : (
+        <Protected>
+          {body}
+        </Protected>
+      )}
     </div>
   );
 }

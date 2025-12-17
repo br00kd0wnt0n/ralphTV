@@ -2,16 +2,15 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useHls } from '../../hooks/useHls';
 import { CONFIG } from '../../config';
 import '../../styles/embed-player.css';
-
-type View = 'mini' | 'expanded';
+// OverlayLayer intentionally omitted for v1 push
 
 export default function LiveEmbedPlayer() {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [view, setView] = useState<View>('mini');
   const [playing, setPlaying] = useState(true);
   const [videoIsPlaying, setVideoIsPlaying] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  // Fixed landscape 16:9 for v1
   const [volume, setVolume] = useState<number>(() => {
     const saved = typeof window !== 'undefined' ? window.localStorage.getItem('embed.vol') : null;
     return saved ? Math.min(1, Math.max(0, Number(saved))) : 0; // default 0 (muted) to maximize autoplay
@@ -32,7 +31,8 @@ export default function LiveEmbedPlayer() {
     return undefined;
   })();
 
-  const { live, state } = useHls(videoRef.current, { enabled: true, src: srcOverride, statusIntervalMs: 2000 });
+  const defaultBase = CONFIG.RELAY_BASE_URL ? `${CONFIG.RELAY_BASE_URL}/hls/stream.m3u8` : '';
+  const { live, state } = useHls(videoRef.current, { enabled: true, src: srcOverride || defaultBase, statusIntervalMs: 2000 });
   const fallbackUrl = useMemo(() => CONFIG.FALLBACK_GIF_URL || '/offline.gif', []);
 
   // Sync initial volume/mute and persist changes
@@ -80,62 +80,46 @@ export default function LiveEmbedPlayer() {
   const showFallback = (!videoIsPlaying && !live) || state === 'error';
 
   return (
-    <div ref={containerRef} className={`embed-player ${view} ${isFullscreen ? 'fullscreen-active' : ''}`}>
-      {/* Retro surround surface */}
-      <div className="embed-surface retro-surround">
-        <div className="retro-body">
-          <div className="screen">
-            <video
-              ref={videoRef}
-              playsInline
-              autoPlay
-              muted={volume === 0}
-              onClick={() => view === 'expanded' && setPlaying(p => !p)}
-              crossOrigin="anonymous"
-              onPlay={() => setVideoIsPlaying(true)}
-              onPause={() => setVideoIsPlaying(false)}
+    <div ref={containerRef} className={`embed-simple ${isFullscreen ? 'fullscreen-active' : ''}`}>
+      <div className={`player-box landscape`}>
+        <video
+          ref={videoRef}
+          playsInline
+          autoPlay
+          muted={volume === 0}
+          onClick={() => setPlaying(p => !p)}
+          crossOrigin="anonymous"
+          onPlay={() => setVideoIsPlaying(true)}
+          onPause={() => setVideoIsPlaying(false)}
+        />
+        {showFallback && (
+          <img className="embed-fallback overlay" src={fallbackUrl} alt="Live stream offline" />
+        )}
+        {/* Overlays omitted in v1 push */}
+
+        {/* Controls */}
+        <button
+          className="overlay center-toggle"
+          aria-label={playing ? 'Pause' : 'Play'}
+          onClick={() => setPlaying(p => !p)}
+        >
+          {playing ? '⏸' : '▶️'}
+        </button>
+        <div className="overlay bottom-bar">
+          <div className="vol">
+            <span>🔊</span>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              value={volume}
+              onChange={(e) => setVolume(parseFloat(e.target.value))}
             />
-            {showFallback && (
-              <img className="embed-fallback overlay" src={fallbackUrl} alt="Live stream offline" />
-            )}
           </div>
+          <div className="spacer" />
+          <button className="btn" aria-label="Fullscreen" onClick={toggleFullscreen}>⛶</button>
         </div>
-
-        {/* Mini: expand only */}
-        {view === 'mini' && (
-          <button className="btn expand" aria-label="Expand player" onClick={() => setView('expanded')}>
-            ⛶
-          </button>
-        )}
-
-        {/* Expanded controls: play/pause overlay, volume, fullscreen */}
-        {view === 'expanded' && (
-          <>
-            <button
-              className="overlay center-toggle"
-              aria-label={playing ? 'Pause' : 'Play'}
-              onClick={() => setPlaying(p => !p)}
-            >
-              {playing ? '⏸' : '▶️'}
-            </button>
-            <div className="overlay bottom-bar">
-              <div className="vol">
-                <span>🔊</span>
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.01"
-                  value={volume}
-                  onChange={(e) => setVolume(parseFloat(e.target.value))}
-                />
-              </div>
-              <div className="spacer" />
-              <button className="btn" aria-label="Fullscreen" onClick={toggleFullscreen}>⛶</button>
-              <button className="btn" aria-label="Minimize" onClick={() => setView('mini')}>—</button>
-            </div>
-          </>
-        )}
       </div>
     </div>
   );
