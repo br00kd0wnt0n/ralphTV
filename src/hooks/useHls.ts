@@ -24,6 +24,7 @@ export function useHls(video: HTMLVideoElement | null, opts: UseHlsOpts = {}) {
   const [live, setLive] = useState(false);
   const [state, setState] = useState<LiveState>('idle');
   const [error, setError] = useState<string | null>(null);
+  const stoppedRef = useRef<boolean>(false);
 
   // Poll backend for relay streaming state (if API is configured)
   useEffect(() => {
@@ -61,9 +62,13 @@ export function useHls(video: HTMLVideoElement | null, opts: UseHlsOpts = {}) {
         const allFalse = [backendLive, probeLive].every(v => v === false);
         if (anyLive) setLive(true);
         else if (allFalse) setLive(false);
-        // Light retry nudge when offline
-        if (!anyLive && hlsRef.current) {
-          try { hlsRef.current.startLoad(-1); } catch {}
+        // Gate network activity to avoid hammering relay when offline
+        if (hlsRef.current) {
+          if (anyLive && stoppedRef.current) {
+            try { hlsRef.current.startLoad(-1); stoppedRef.current = false; } catch {}
+          } else if (allFalse && !stoppedRef.current) {
+            try { hlsRef.current.stopLoad(); stoppedRef.current = true; } catch {}
+          }
         }
         // Do not force state to 'offline' here; render logic can show fallback while allowing attach to proceed.
       } catch {
