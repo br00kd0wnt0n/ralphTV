@@ -8,6 +8,7 @@ export default defineConfig({
     allowedHosts: [
       'ralphtv-production.up.railway.app',
       '.up.railway.app', // Allow all Railway domains
+      '.ralph.world', // Allow all ralph.world subdomains
     ],
   },
 });
