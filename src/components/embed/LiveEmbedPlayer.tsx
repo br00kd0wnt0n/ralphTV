@@ -210,6 +210,21 @@ export default function LiveEmbedPlayer() {
     };
   }, [detectAspect]);
 
+  // Notify parent window of aspect ratio changes (for iframe embeds)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.parent.postMessage({
+        type: 'ralphTV:aspect',
+        aspect: aspectMode,
+        dimensions: aspectMode === 'portrait' ? { width: 9, height: 16 } : { width: 16, height: 9 }
+      }, '*');
+      console.log('[RalphTV] Sent aspect message to parent:', aspectMode);
+    } catch (err) {
+      // Ignore if no parent or cross-origin restrictions
+    }
+  }, [aspectMode]);
+
   return (
     <div
       ref={containerRef}
