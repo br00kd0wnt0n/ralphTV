@@ -1,6 +1,6 @@
 /* Simple full-viewport container */
 .embed-simple { position: fixed; inset: 0; background: #000; display: grid; place-items: center; color: #fff; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
-.embed-simple .player-box { position: relative; width: min(92vw, 1280px); max-height: 92vh; background: #000; }
+.embed-simple .player-box { position: relative; width: min(92vw, 1280px); max-height: 92vh; background: #000; transition: width 400ms ease, aspect-ratio 400ms ease; }
 .embed-simple .player-box.landscape { aspect-ratio: 16 / 9; }
 .embed-simple .player-box.portrait { aspect-ratio: 9 / 16; width: min(60vw, 540px); }
 .embed-simple video, .embed-simple .embed-fallback { width: 100%; height: 100%; object-fit: contain; display: block; background: #000; }

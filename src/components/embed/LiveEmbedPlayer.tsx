@@ -1,8 +1,51 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useHls } from '../../hooks/useHls';
 import { CONFIG } from '../../config';
 import '../../styles/embed-player.css';
 // OverlayLayer intentionally omitted for v1 push
+
+/**
+ * Detects content aspect ratio by sampling video edges for letterbox/pillarbox bars.
+ * Returns 'portrait' if pillarboxed (black bars on sides), 'landscape' otherwise.
+ */
+function detectContentAspect(video: HTMLVideoElement): 'landscape' | 'portrait' {
+  const { videoWidth, videoHeight } = video;
+  if (!videoWidth || !videoHeight) return 'landscape';
+
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return 'landscape';
+
+  // Sample at smaller size for performance
+  const sampleW = 160;
+  const sampleH = Math.round((videoHeight / videoWidth) * sampleW);
+  canvas.width = sampleW;
+  canvas.height = sampleH;
+
+  try {
+    ctx.drawImage(video, 0, 0, sampleW, sampleH);
+  } catch {
+    return 'landscape';
+  }
+
+  // Check for pillarbox (black bars on left/right sides = portrait content)
+  const leftEdge = ctx.getImageData(2, Math.floor(sampleH / 2), 1, 1).data;
+  const rightEdge = ctx.getImageData(sampleW - 3, Math.floor(sampleH / 2), 1, 1).data;
+
+  // Check for letterbox (black bars on top/bottom = landscape content in portrait container)
+  const topEdge = ctx.getImageData(Math.floor(sampleW / 2), 2, 1, 1).data;
+  const bottomEdge = ctx.getImageData(Math.floor(sampleW / 2), sampleH - 3, 1, 1).data;
+
+  const isBlack = (rgba: Uint8ClampedArray) => rgba[0] < 20 && rgba[1] < 20 && rgba[2] < 20;
+
+  const hasPillarbox = isBlack(leftEdge) && isBlack(rightEdge);
+  const hasLetterbox = isBlack(topEdge) && isBlack(bottomEdge);
+
+  // Pillarbox without letterbox means portrait content
+  if (hasPillarbox && !hasLetterbox) return 'portrait';
+
+  return 'landscape';
+}
 
 export default function LiveEmbedPlayer() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -11,7 +54,7 @@ export default function LiveEmbedPlayer() {
   const [videoIsPlaying, setVideoIsPlaying] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(false);
-  // Fixed landscape 16:9 for v1
+  const [aspectMode, setAspectMode] = useState<'landscape' | 'portrait'>('landscape');
   const [volume, setVolume] = useState<number>(() => {
     const saved = typeof window !== 'undefined' ? window.localStorage.getItem('embed.vol') : null;
     return saved ? Math.min(1, Math.max(0, Number(saved))) : 0; // default 0 (muted) to maximize autoplay
@@ -107,6 +150,46 @@ export default function LiveEmbedPlayer() {
     }
   }, [live, playing]);
 
+  // Detect content aspect ratio by analyzing video frames for letterbox/pillarbox
+  const detectAspect = useCallback(() => {
+    const v = videoRef.current;
+    if (!v || v.readyState < 2 || v.paused) return; // Need at least HAVE_CURRENT_DATA
+    const detected = detectContentAspect(v);
+    setAspectMode(detected);
+  }, []);
+
+  // Poll for aspect changes while video is playing (catches content transitions)
+  useEffect(() => {
+    if (!live || !videoIsPlaying) return;
+
+    // Initial detection
+    detectAspect();
+
+    // Poll every 2 seconds to catch content changes
+    const interval = setInterval(detectAspect, 2000);
+
+    return () => clearInterval(interval);
+  }, [live, videoIsPlaying, detectAspect]);
+
+  // Also detect on video events
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+
+    const onCanPlay = () => detectAspect();
+    const onSeeked = () => detectAspect();
+
+    v.addEventListener('canplay', onCanPlay);
+    v.addEventListener('seeked', onSeeked);
+    v.addEventListener('loadeddata', onCanPlay);
+
+    return () => {
+      v.removeEventListener('canplay', onCanPlay);
+      v.removeEventListener('seeked', onSeeked);
+      v.removeEventListener('loadeddata', onCanPlay);
+    };
+  }, [detectAspect]);
+
   return (
     <div
       ref={containerRef}
@@ -114,7 +197,7 @@ export default function LiveEmbedPlayer() {
       onMouseMove={() => setShowControls(true)}
       onTouchStart={() => setShowControls(true)}
     >
-      <div className={`player-box landscape`}>
+      <div className={`player-box ${aspectMode}`}>
         <video
           ref={videoRef}
           playsInline
