@@ -1039,5 +1039,33 @@ function broadcast(topic, payload) {
   }
 }
 
+// Seed admin user from env vars if not exists
+async function seedAdminUser() {
+  const email = process.env.ADMIN_EMAIL;
+  const password = process.env.ADMIN_PASSWORD;
+  if (!email || !password) {
+    console.log('[Seed] No ADMIN_EMAIL/ADMIN_PASSWORD env vars set, skipping admin seed');
+    return;
+  }
+  try {
+    const { rows } = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+    if (rows.length > 0) {
+      console.log(`[Seed] Admin user ${email} already exists`);
+      return;
+    }
+    const hash = await bcrypt.hash(password, 10);
+    await pool.query(
+      'INSERT INTO users (id, email, password_hash, role) VALUES (gen_random_uuid(), $1, $2, $3)',
+      [email, hash, 'admin']
+    );
+    console.log(`[Seed] Created admin user: ${email}`);
+  } catch (e) {
+    console.error('[Seed] Failed to seed admin user:', e.message);
+  }
+}
+
 const port = process.env.PORT || 3000;
-server.listen(port, () => console.log(`ralphTV backend listening on ${port}`));
+server.listen(port, async () => {
+  console.log(`ralphTV backend listening on ${port}`);
+  await seedAdminUser();
+});
