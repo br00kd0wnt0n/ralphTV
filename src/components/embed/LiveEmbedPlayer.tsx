@@ -10,11 +10,17 @@ import '../../styles/embed-player.css';
  */
 function detectContentAspect(video: HTMLVideoElement): 'landscape' | 'portrait' {
   const { videoWidth, videoHeight } = video;
-  if (!videoWidth || !videoHeight) return 'landscape';
+  if (!videoWidth || !videoHeight) {
+    console.log('[AspectDetect] No video dimensions yet');
+    return 'landscape';
+  }
 
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  if (!ctx) return 'landscape';
+  if (!ctx) {
+    console.log('[AspectDetect] Could not get canvas context');
+    return 'landscape';
+  }
 
   // Sample at smaller size for performance
   const sampleW = 160;
@@ -24,27 +30,41 @@ function detectContentAspect(video: HTMLVideoElement): 'landscape' | 'portrait' 
 
   try {
     ctx.drawImage(video, 0, 0, sampleW, sampleH);
-  } catch {
+
+    // Check for pillarbox (black bars on left/right sides = portrait content)
+    const leftEdge = ctx.getImageData(2, Math.floor(sampleH / 2), 1, 1).data;
+    const rightEdge = ctx.getImageData(sampleW - 3, Math.floor(sampleH / 2), 1, 1).data;
+
+    // Check for letterbox (black bars on top/bottom = landscape content in portrait container)
+    const topEdge = ctx.getImageData(Math.floor(sampleW / 2), 2, 1, 1).data;
+    const bottomEdge = ctx.getImageData(Math.floor(sampleW / 2), sampleH - 3, 1, 1).data;
+
+    const isBlack = (rgba: Uint8ClampedArray) => rgba[0] < 20 && rgba[1] < 20 && rgba[2] < 20;
+
+    const hasPillarbox = isBlack(leftEdge) && isBlack(rightEdge);
+    const hasLetterbox = isBlack(topEdge) && isBlack(bottomEdge);
+
+    console.log('[AspectDetect] Edges:', {
+      left: Array.from(leftEdge.slice(0, 3)),
+      right: Array.from(rightEdge.slice(0, 3)),
+      top: Array.from(topEdge.slice(0, 3)),
+      bottom: Array.from(bottomEdge.slice(0, 3)),
+      hasPillarbox,
+      hasLetterbox
+    });
+
+    // Pillarbox without letterbox means portrait content
+    if (hasPillarbox && !hasLetterbox) {
+      console.log('[AspectDetect] Detected: portrait');
+      return 'portrait';
+    }
+
+    console.log('[AspectDetect] Detected: landscape');
+    return 'landscape';
+  } catch (err) {
+    console.log('[AspectDetect] Canvas error (likely CORS):', err);
     return 'landscape';
   }
-
-  // Check for pillarbox (black bars on left/right sides = portrait content)
-  const leftEdge = ctx.getImageData(2, Math.floor(sampleH / 2), 1, 1).data;
-  const rightEdge = ctx.getImageData(sampleW - 3, Math.floor(sampleH / 2), 1, 1).data;
-
-  // Check for letterbox (black bars on top/bottom = landscape content in portrait container)
-  const topEdge = ctx.getImageData(Math.floor(sampleW / 2), 2, 1, 1).data;
-  const bottomEdge = ctx.getImageData(Math.floor(sampleW / 2), sampleH - 3, 1, 1).data;
-
-  const isBlack = (rgba: Uint8ClampedArray) => rgba[0] < 20 && rgba[1] < 20 && rgba[2] < 20;
-
-  const hasPillarbox = isBlack(leftEdge) && isBlack(rightEdge);
-  const hasLetterbox = isBlack(topEdge) && isBlack(bottomEdge);
-
-  // Pillarbox without letterbox means portrait content
-  if (hasPillarbox && !hasLetterbox) return 'portrait';
-
-  return 'landscape';
 }
 
 export default function LiveEmbedPlayer() {
