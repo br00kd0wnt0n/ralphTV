@@ -1,5 +1,5 @@
 /* Simple full-viewport container */
-.embed-simple { position: fixed; inset: 0; background: #000; display: grid; place-items: center; color: #fff; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+.embed-simple { position: fixed; inset: 0; background: linear-gradient(135deg, #1a0a1a 0%, #2d1f3d 25%, #1a2a4a 50%, #0f1a2a 100%); display: grid; place-items: center; color: #fff; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
 .embed-simple .player-box { position: relative; width: min(92vw, 1280px); max-height: 92vh; background: #000; transition: width 400ms ease, aspect-ratio 400ms ease; }
 .embed-simple .player-box.landscape { aspect-ratio: 16 / 9; }
 .embed-simple .player-box.portrait { aspect-ratio: 9 / 16; width: min(60vw, 540px); }
