@@ -48,7 +48,7 @@ export default function StreamerControls({
     fetchLastAction();
     const t = setInterval(refresh, 10000);
     return () => clearInterval(t);
-  }, []);
+  }, [auth]);
 
   const [sessionSec, setSessionSec] = useState<number>(0);
 

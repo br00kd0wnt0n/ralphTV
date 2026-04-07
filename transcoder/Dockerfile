@@ -13,5 +13,10 @@ COPY . .
 ENV NODE_ENV=production \
     PORT=3002
 
+EXPOSE 3002
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget -qO- http://localhost:3002/healthz || exit 1
+
 CMD ["npm", "start"]
 

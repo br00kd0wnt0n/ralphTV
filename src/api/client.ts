@@ -4,7 +4,6 @@ import { CONFIG } from '../config';
  * Global 401 handler - clears token and reloads to login
  */
 function handle401() {
-  console.warn('Session expired (401), clearing token and reloading...');
   localStorage.removeItem('token');
   // Reload the page to force re-login
   window.location.href = '/';

@@ -21,6 +21,9 @@ ENV NGINX_WORKER_PROCESSES=auto \
 
 EXPOSE 8080 1935
 
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget -qO- http://localhost:8080/healthz || exit 1
+
 ENTRYPOINT ["/bin/bash","/entrypoint.sh"]
 CMD ["nginx","-g","daemon off;"]
 

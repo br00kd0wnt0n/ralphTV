@@ -81,7 +81,7 @@ export default function OnAirTile({ assetMap }: { assetMap: Map<string, Asset> }
         }
       } catch (e) {
         // Suppress errors - relay may be unavailable
-        console.log('Relay info unavailable');
+        // Relay unavailable
         if (!cancelled) setRelayStreaming(false);
       }
     };

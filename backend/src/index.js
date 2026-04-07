@@ -33,9 +33,13 @@ app.use(
 );
 
 // Postgres
+const isLocalDb = (process.env.DATABASE_URL || '').includes('localhost') || (process.env.DATABASE_URL || '').includes('127.0.0.1');
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
+  ...(isLocalDb ? {} : { ssl: { rejectUnauthorized: process.env.NODE_ENV === 'production' } }),
+  max: 20,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 5000,
 });
 
 // S3 client if env present
@@ -44,7 +48,12 @@ const s3 = hasS3
   ? new S3Client({ region: process.env.AWS_REGION })
   : null;
 
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET && process.env.NODE_ENV === 'production') {
+  console.error('FATAL: JWT_SECRET must be set in production');
+  process.exit(1);
+}
+const _JWT_SECRET = JWT_SECRET || 'dev-secret-change-me';
 const SERVICE_TOKEN = process.env.SERVICE_TOKEN || '';
 
 // Health
@@ -53,7 +62,7 @@ app.get('/health', (req, res) => res.json({ ok: true }));
 
 // Auth helpers
 function signToken(payload) {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: '2h' });
+  return jwt.sign(payload, _JWT_SECRET, { expiresIn: '2h' });
 }
 
 function authMiddleware(req, res, next) {
@@ -68,7 +77,7 @@ function authMiddleware(req, res, next) {
   }
   if (!bearer) return res.status(403).json({ message: 'No token provided' });
   try {
-    const decoded = jwt.verify(bearer, JWT_SECRET);
+    const decoded = jwt.verify(bearer, _JWT_SECRET);
     req.user = decoded;
     next();
   } catch (e) {
@@ -104,11 +113,18 @@ app.post('/uploads/init', authMiddleware, async (req, res) => {
   if (!fileName || !mimeType || typeof size !== 'number') return res.status(400).json({ message: 'Missing fields' });
   if (!hasS3) return res.status(501).json({ message: 'S3 not configured' });
 
+  // Validate MIME type
+  const allowedMimeTypes = /^(video|audio|image)\//;
+  if (!allowedMimeTypes.test(mimeType)) return res.status(400).json({ message: 'Unsupported file type' });
+
+  // Sanitize filename
+  const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/\.{2,}/g, '.').slice(0, 255);
+
   try {
     const fileId = uuidv4();
     const keyPrefix = process.env.S3_PREFIX || 'raw';
     const userPrefix = req.user?.userId || 'anon';
-    const s3Key = `${keyPrefix}/${userPrefix}/${fileId}/${fileName}`;
+    const s3Key = `${keyPrefix}/${userPrefix}/${fileId}/${safeName}`;
 
     const thresholdMB = parseInt(process.env.MULTIPART_THRESHOLD_MB || '100', 10);
     if (size < thresholdMB * 1024 * 1024) {
@@ -251,7 +267,7 @@ app.put('/schedule/:channel/:week/:day', authMiddleware, async (req, res) => {
       broadcast(`schedule:${channel}:${week}:${day}`, { doc: { version: row.version, items } });
       return res.json({ version: row.version, items, playbackMode: row.playback_mode, playStart: row.play_start });
     } catch (e) {
-      await client.query('rollback');
+      try { await client.query('rollback'); } catch (rbErr) { console.error('rollback failed', rbErr.message); }
       throw e;
     } finally { client.release(); }
   } catch (e) {
@@ -302,7 +318,7 @@ app.patch('/schedule/:channel/:week/:day', authMiddleware, async (req, res) => {
       broadcast(`schedule:${channel}:${week}:${day}`, { doc: { version: row.version, items } });
       return res.json({ version: row.version, items, playbackMode: row.playback_mode, playStart: row.play_start });
     } catch (e) {
-      await client.query('rollback');
+      try { await client.query('rollback'); } catch (rbErr) { console.error('rollback failed', rbErr.message); }
       throw e;
     } finally { client.release(); }
   } catch (e) {
@@ -320,19 +336,25 @@ app.post('/assets/:id/tags', authMiddleware, async (req, res) => {
     const client = await pool.connect();
     try {
       await client.query('begin');
-      const ids = [];
-      for (const name of tags) {
-        const { rows } = await client.query('insert into tags (id, name) values (gen_random_uuid(), $1) on conflict (name) do update set name=excluded.name returning id', [name]);
-        ids.push(rows[0].id);
-      }
+      // Batch upsert all tags in one query
+      const tagValues = tags.map((_, i) => `(gen_random_uuid(), $${i + 1})`).join(', ');
+      const { rows: tagRows } = await client.query(
+        `insert into tags (id, name) values ${tagValues} on conflict (name) do update set name=excluded.name returning id`,
+        tags
+      );
+      const ids = tagRows.map(r => r.id);
       await client.query('delete from asset_tags where asset_id=$1', [assetId]);
-      for (const tid of ids) {
-        await client.query('insert into asset_tags (asset_id, tag_id) values ($1, $2) on conflict do nothing', [assetId, tid]);
+      if (ids.length) {
+        const atValues = ids.map((_, i) => `($1, $${i + 2})`).join(', ');
+        await client.query(
+          `insert into asset_tags (asset_id, tag_id) values ${atValues} on conflict do nothing`,
+          [assetId, ...ids]
+        );
       }
       await client.query('commit');
       return res.json({ ok: true, tags });
     } catch (e) {
-      await client.query('rollback');
+      try { await client.query('rollback'); } catch (rbErr) { console.error('rollback failed', rbErr.message); }
       throw e;
     } finally { client.release(); }
   } catch (e) {
@@ -439,7 +461,7 @@ app.get('/assets/:id/url', authMiddleware, async (req, res) => {
     const useNormalized = rows[0].s3_key_norm && rows[0].norm_status === 'ready';
     const key = useNormalized ? rows[0].s3_key_norm : rows[0].s3_key;
 
-    console.log(`==> Asset ${id} URL request: norm_status=${rows[0].norm_status}, s3_key_norm=${rows[0].s3_key_norm ? 'set' : 'null'}, useNormalized=${useNormalized}`);
+    // Asset URL resolved: useNormalized=${useNormalized}
 
     const cmd = new GetObjectCommand({ Bucket: process.env.S3_BUCKET_UPLOADS, Key: key });
     const url = await getSignedUrl(s3, cmd, { expiresIn: (parseInt(process.env.PRESIGN_TTL_MINUTES || '10', 10)) * 60 });
@@ -542,6 +564,89 @@ app.get('/stream-actions/last', authMiddleware, async (_req, res) => {
   }
 });
 
+// Podcast RSS feed
+const RSS_TITLE = process.env.RSS_TITLE || 'RalphTV';
+const RSS_DESCRIPTION = process.env.RSS_DESCRIPTION || 'RalphTV Video Podcast';
+const RSS_LINK = process.env.RSS_LINK || 'https://ralphtv.com';
+const RSS_LANGUAGE = process.env.RSS_LANGUAGE || 'en';
+const RSS_CATEGORY = process.env.RSS_CATEGORY || 'TV & Film';
+const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL || '';
+
+function escapeXml(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+}
+
+function stripExtension(name) {
+  return name.replace(/\.[^.]+$/, '');
+}
+
+function formatItunesDuration(sec) {
+  if (!sec || sec <= 0) return '0:00';
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+app.get('/feed/rss', async (_req, res) => {
+  if (!R2_PUBLIC_URL) {
+    return res.status(503).json({ message: 'R2_PUBLIC_URL not configured' });
+  }
+  try {
+    const { rows } = await pool.query(`
+      select id, file_name, mime_type, size, s3_key_norm, duration_sec, thumbnail_url, uploaded_at
+      from assets
+      where file_type = 'video' and norm_status = 'ready' and s3_key_norm is not null
+      order by uploaded_at desc
+    `);
+
+    const baseUrl = R2_PUBLIC_URL.replace(/\/$/, '');
+    const buildDate = new Date().toUTCString();
+
+    const items = rows.map((r) => {
+      const enclosureUrl = `${baseUrl}/${r.s3_key_norm}`;
+      const title = escapeXml(stripExtension(r.file_name));
+      const pubDate = new Date(r.uploaded_at).toUTCString();
+      const duration = formatItunesDuration(r.duration_sec);
+      const imageTag = r.thumbnail_url
+        ? `      <itunes:image href="${escapeXml(r.thumbnail_url)}" />`
+        : '';
+
+      return `    <item>
+      <title>${title}</title>
+      <enclosure url="${escapeXml(enclosureUrl)}" length="${r.size || 0}" type="${escapeXml(r.mime_type)}" />
+      <guid isPermaLink="false">${escapeXml(enclosureUrl)}</guid>
+      <pubDate>${pubDate}</pubDate>
+      <itunes:duration>${duration}</itunes:duration>
+${imageTag}
+    </item>`;
+    }).join('\n');
+
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"
+  xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
+  xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel>
+    <title>${escapeXml(RSS_TITLE)}</title>
+    <description>${escapeXml(RSS_DESCRIPTION)}</description>
+    <link>${escapeXml(RSS_LINK)}</link>
+    <language>${RSS_LANGUAGE}</language>
+    <lastBuildDate>${buildDate}</lastBuildDate>
+    <itunes:category text="${escapeXml(RSS_CATEGORY)}" />
+${items}
+  </channel>
+</rss>`;
+
+    res.setHeader('Content-Type', 'application/rss+xml; charset=utf-8');
+    return res.send(xml);
+  } catch (e) {
+    console.error('rss feed error', e);
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // Feed endpoints
 app.get('/feed/:channel/:week/:day/playlist', authMiddleware, async (req, res) => {
   const { channel, week, day } = req.params;
@@ -567,7 +672,7 @@ app.get('/feed/:channel/:week/:day/playlist', authMiddleware, async (req, res) =
             const key = useNormalized ? it.s3KeyNorm : it.s3Key;
             const cmd = new GetObjectCommand({ Bucket: process.env.S3_BUCKET_UPLOADS, Key: key });
             const url = await getSignedUrl(s3, cmd, { expiresIn: (parseInt(process.env.PRESIGN_TTL_MINUTES || '10', 10)) * 60 });
-            console.log(`==> Playlist item assetId=${it.assetId}: normStatus=${it.normStatus}, s3KeyNorm=${it.s3KeyNorm ? 'set' : 'null'}, useNormalized=${useNormalized}`);
+            // Playlist item resolved
             return { assetId: it.assetId, vimeoId: it.vimeoId, durationSec: it.durationSec, url, normalized: useNormalized, normStatus: it.normStatus };
           } catch {
             return { assetId: it.assetId, vimeoId: it.vimeoId, durationSec: it.durationSec, normStatus: it.normStatus };
@@ -583,8 +688,16 @@ app.get('/feed/:channel/:week/:day/playlist', authMiddleware, async (req, res) =
   }
 });
 
+// Admin role check middleware
+function adminOnly(req, res, next) {
+  if (req.user?.role !== 'admin' && req.user?.role !== 'service') {
+    return res.status(403).json({ message: 'Admin access required' });
+  }
+  next();
+}
+
 // Admin: enqueue backfill normalization for existing assets
-app.post('/admin/normalize/backfill', authMiddleware, async (req, res) => {
+app.post('/admin/normalize/backfill', authMiddleware, adminOnly, async (req, res) => {
   try {
     const { rows } = await pool.query(`select id from assets where coalesce(s3_key_norm,'')=''`);
     const client = await pool.connect();
@@ -596,7 +709,7 @@ app.post('/admin/normalize/backfill', authMiddleware, async (req, res) => {
       }
       await client.query('commit');
     } catch (e) {
-      await client.query('rollback');
+      try { await client.query('rollback'); } catch (rbErr) { console.error('rollback failed', rbErr.message); }
       throw e;
     } finally { client.release(); }
     return res.json({ enqueued: rows.length });
@@ -607,7 +720,7 @@ app.post('/admin/normalize/backfill', authMiddleware, async (req, res) => {
 });
 
 // Admin: re-normalize ALL assets (even if already normalized)
-app.post('/admin/normalize/reprocess', authMiddleware, async (req, res) => {
+app.post('/admin/normalize/reprocess', authMiddleware, adminOnly, async (req, res) => {
   try {
     const { rows } = await pool.query(`select id from assets where file_type = 'video' order by uploaded_at desc`);
     const client = await pool.connect();
@@ -621,7 +734,7 @@ app.post('/admin/normalize/reprocess', authMiddleware, async (req, res) => {
       }
       await client.query('commit');
     } catch (e) {
-      await client.query('rollback');
+      try { await client.query('rollback'); } catch (rbErr) { console.error('rollback failed', rbErr.message); }
       throw e;
     } finally { client.release(); }
     console.log(`==> Enqueued ${rows.length} assets for re-normalization`);
@@ -673,6 +786,7 @@ app.get('/debug/schedule/:channel/:week/:day', authMiddleware, async (req, res) 
 app.get('/feed/:channel/:week/:day/now', authMiddleware, async (req, res) => {
   const { channel, week, day } = req.params;
   const at = req.query.at ? new Date(req.query.at) : new Date();
+  if (isNaN(at.getTime())) return res.status(400).json({ message: 'Invalid date' });
   try {
     const client = await pool.connect();
     try {
@@ -696,15 +810,15 @@ function dayNameFor(date = new Date()) {
 }
 
 app.get('/status/:channel/:week/today', authMiddleware, async (req, res) => {
-  const day = dayNameFor();
-  const { channel, week } = req.params;
-  req.params.day = day;
-  return app._router.handle({ ...req, url: `/status/${encodeURIComponent(channel)}/${encodeURIComponent(week)}/${day}` }, res, () => {});
+  req.params.day = dayNameFor();
+  // Fall through to the /:day handler below via redirect
+  return res.redirect(307, `/status/${encodeURIComponent(req.params.channel)}/${encodeURIComponent(req.params.week)}/${req.params.day}${req.url.includes('?') ? '?' + req.url.split('?')[1] : ''}`);
 });
 
 app.get('/status/:channel/:week/:day', authMiddleware, async (req, res) => {
   const { channel, week, day } = req.params;
   const at = req.query.at ? new Date(req.query.at) : new Date();
+  if (isNaN(at.getTime())) return res.status(400).json({ message: 'Invalid date' });
   try {
     const client = await pool.connect();
     try {
@@ -779,7 +893,7 @@ app.get('/api/relay/healthz', async (req, res) => {
     res.json({ available: true, url: RELAY_URL });
   } catch (e) {
     console.warn('Relay health check failed:', e.message);
-    res.json({ available: false, error: e.message });
+    res.json({ available: false, error: 'Relay unreachable' });
   }
 });
 
@@ -809,7 +923,7 @@ app.get('/api/system/status', async (req, res) => {
     status.services.push({
       name: 'Database',
       status: 'error',
-      message: e.message
+      message: 'Connection failed'
     });
   }
 
@@ -979,7 +1093,7 @@ app.get('/api/system/status', async (req, res) => {
 });
 
 // Legacy debug endpoint (kept for compatibility)
-app.get('/api/debug/on-air', async (req, res) => {
+app.get('/api/debug/on-air', authMiddleware, async (req, res) => {
   const checks = {
     relayConfigured: !!RELAY_URL,
     relayUrl: RELAY_URL || 'Not configured',
@@ -993,7 +1107,7 @@ app.get('/api/debug/on-air', async (req, res) => {
       const statusData = await statusRes.json();
       checks.relayStatus = statusData;
     } catch (e) {
-      checks.relayStatus = { error: e.message };
+      checks.relayStatus = { error: 'Unreachable' };
     }
 
     try {
@@ -1001,7 +1115,7 @@ app.get('/api/debug/on-air', async (req, res) => {
       const destData = await destRes.json();
       checks.relayDestinations = destData;
     } catch (e) {
-      checks.relayDestinations = { error: e.message };
+      checks.relayDestinations = { error: 'Unreachable' };
     }
   }
 
@@ -1013,17 +1127,44 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
 const subs = new Map(); // topic -> Set(ws)
-wss.on('connection', (ws) => {
+const MAX_TOPICS_PER_CLIENT = 20;
+const ALLOWED_TOPIC_PREFIXES = ['schedule:', 'categories', 'stream-actions'];
+
+wss.on('connection', (ws, req) => {
+  // Optional token auth from query string
+  let authenticated = false;
+  try {
+    const url = new URL(req.url, 'http://localhost');
+    const token = url.searchParams.get('token');
+    if (token) {
+      jwt.verify(token, _JWT_SECRET);
+      authenticated = true;
+    } else if (SERVICE_TOKEN) {
+      const svc = url.searchParams.get('service_token');
+      if (svc && String(svc) === String(SERVICE_TOKEN)) authenticated = true;
+    }
+  } catch {}
+
+  let clientTopicCount = 0;
+
   ws.on('message', (raw) => {
     try {
       const msg = JSON.parse(raw.toString());
       if (msg?.type === 'subscribe' && msg.topic) {
+        // Validate topic prefix
+        const validTopic = ALLOWED_TOPIC_PREFIXES.some(p => msg.topic === p || msg.topic.startsWith(p));
+        if (!validTopic) return;
+        // Limit topics per client
+        if (clientTopicCount >= MAX_TOPICS_PER_CLIENT) return;
         if (!subs.has(msg.topic)) subs.set(msg.topic, new Set());
         subs.get(msg.topic).add(ws);
+        clientTopicCount++;
       } else if (msg?.type === 'unsubscribe' && msg.topic) {
-        subs.get(msg.topic)?.delete(ws);
+        if (subs.get(msg.topic)?.delete(ws)) clientTopicCount--;
       }
-    } catch {}
+    } catch (e) {
+      console.warn('Invalid WebSocket message:', e.message);
+    }
   });
   ws.on('close', () => {
     for (const set of subs.values()) set.delete(ws);
@@ -1035,7 +1176,10 @@ function broadcast(topic, payload) {
   if (!set) return;
   const data = JSON.stringify({ topic, ...payload });
   for (const ws of set) {
-    try { ws.send(data); } catch {}
+    try { ws.send(data); } catch (e) {
+      // Remove dead connections
+      set.delete(ws);
+    }
   }
 }
 
@@ -1069,3 +1213,18 @@ server.listen(port, async () => {
   console.log(`ralphTV backend listening on ${port}`);
   await seedAdminUser();
 });
+
+// Graceful shutdown
+async function shutdown(signal) {
+  console.log(`\n[Shutdown] Received ${signal}, closing gracefully...`);
+  server.close(() => {
+    console.log('[Shutdown] HTTP server closed');
+  });
+  for (const ws of wss.clients) {
+    try { ws.close(1001, 'Server shutting down'); } catch {}
+  }
+  try { await pool.end(); console.log('[Shutdown] Database pool closed'); } catch {}
+  setTimeout(() => process.exit(0), 5000); // Force exit after 5s
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

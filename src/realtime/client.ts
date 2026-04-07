@@ -5,6 +5,8 @@ type Handler = (event: any) => void;
 export class RealtimeClient {
   private ws: WebSocket | null = null;
   private handlers: Map<string, Set<Handler>> = new Map();
+  private retryCount = 0;
+  private maxRetries = 10;
 
   connect() {
     if (!CONFIG.REALTIME_URL) return;
@@ -12,7 +14,7 @@ export class RealtimeClient {
     try {
       this.ws = new WebSocket(CONFIG.REALTIME_URL);
       this.ws.onopen = () => {
-        // Resubscribe topics
+        this.retryCount = 0; // Reset on successful connection
         for (const topic of this.handlers.keys()) this.send({ type: 'subscribe', topic });
       };
       this.ws.onmessage = (msg) => {
@@ -26,8 +28,10 @@ export class RealtimeClient {
         } catch {}
       };
       this.ws.onclose = () => {
-        // Simple retry
-        setTimeout(() => this.connect(), 1500);
+        if (this.retryCount >= this.maxRetries) return;
+        const delay = Math.min(1500 * Math.pow(2, this.retryCount), 30000);
+        this.retryCount++;
+        setTimeout(() => this.connect(), delay);
       };
     } catch {}
   }

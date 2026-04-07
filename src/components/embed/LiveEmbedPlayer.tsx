@@ -10,17 +10,11 @@ import '../../styles/embed-player.css';
  */
 function detectContentAspect(video: HTMLVideoElement): 'landscape' | 'portrait' {
   const { videoWidth, videoHeight } = video;
-  if (!videoWidth || !videoHeight) {
-    console.log('[AspectDetect] No video dimensions yet');
-    return 'landscape';
-  }
+  if (!videoWidth || !videoHeight) return 'landscape';
 
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  if (!ctx) {
-    console.log('[AspectDetect] Could not get canvas context');
-    return 'landscape';
-  }
+  if (!ctx) return 'landscape';
 
   // Sample at smaller size for performance
   const sampleW = 160;
@@ -44,25 +38,9 @@ function detectContentAspect(video: HTMLVideoElement): 'landscape' | 'portrait' 
     const hasPillarbox = isBlack(leftEdge) && isBlack(rightEdge);
     const hasLetterbox = isBlack(topEdge) && isBlack(bottomEdge);
 
-    console.log('[AspectDetect] Edges:', {
-      left: Array.from(leftEdge.slice(0, 3)),
-      right: Array.from(rightEdge.slice(0, 3)),
-      top: Array.from(topEdge.slice(0, 3)),
-      bottom: Array.from(bottomEdge.slice(0, 3)),
-      hasPillarbox,
-      hasLetterbox
-    });
-
-    // Pillarbox without letterbox means portrait content
-    if (hasPillarbox && !hasLetterbox) {
-      console.log('[AspectDetect] Detected: portrait');
-      return 'portrait';
-    }
-
-    console.log('[AspectDetect] Detected: landscape');
+    if (hasPillarbox && !hasLetterbox) return 'portrait';
     return 'landscape';
-  } catch (err) {
-    console.log('[AspectDetect] Canvas error (likely CORS):', err);
+  } catch {
     return 'landscape';
   }
 }
@@ -185,8 +163,8 @@ export default function LiveEmbedPlayer() {
     // Initial detection
     detectAspect();
 
-    // Poll every 2 seconds to catch content changes
-    const interval = setInterval(detectAspect, 2000);
+    // Poll every 5 seconds to catch content changes
+    const interval = setInterval(detectAspect, 5000);
 
     return () => clearInterval(interval);
   }, [live, videoIsPlaying, detectAspect]);
@@ -214,12 +192,13 @@ export default function LiveEmbedPlayer() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
+      // Use document.referrer for origin when available, fall back to wildcard
+      const parentOrigin = document.referrer ? new URL(document.referrer).origin : '*';
       window.parent.postMessage({
         type: 'ralphTV:aspect',
         aspect: aspectMode,
         dimensions: aspectMode === 'portrait' ? { width: 9, height: 16 } : { width: 16, height: 9 }
-      }, '*');
-      console.log('[RalphTV] Sent aspect message to parent:', aspectMode);
+      }, parentOrigin);
     } catch (err) {
       // Ignore if no parent or cross-origin restrictions
     }
@@ -265,8 +244,9 @@ export default function LiveEmbedPlayer() {
         ))}
         <div className="overlay bottom-bar">
           <div className="vol">
-            <span>🔊</span>
+            <span role="img" aria-label="Volume">🔊</span>
             <input
+              aria-label="Volume"
               type="range"
               min="0"
               max="1"

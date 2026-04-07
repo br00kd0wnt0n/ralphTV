@@ -18,6 +18,8 @@ export const CONFIG = {
   API_BASE_URL: ensureProtocol(import.meta.env.VITE_API_BASE_URL || ''),
   USE_MOCK_UPLOADS: (import.meta.env.VITE_USE_MOCK_UPLOADS ?? 'true') === 'true',
   USE_BACKEND_SCHEDULE: (import.meta.env.VITE_USE_BACKEND_SCHEDULE ?? 'false') === 'true',
+  // Fallback token used when no login session exists (e.g. embed pages).
+  // WARNING: This is embedded in client-side JS and visible to all users.
   API_AUTH_TOKEN: import.meta.env.VITE_API_AUTH_TOKEN || '',
   CHANNEL: import.meta.env.VITE_CHANNEL || 'default',
   WEEK: import.meta.env.VITE_WEEK || 'current',

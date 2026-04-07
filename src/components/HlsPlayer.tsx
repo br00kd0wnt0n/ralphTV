@@ -44,7 +44,7 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
       const health = await checkRelayHealth();
       setRelayAvailable(health.available);
       if (!health.available) {
-        console.log('Relay service unavailable:', health.error);
+        // Relay unavailable, silently noted
       }
     };
 
@@ -76,8 +76,7 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
             setIsPlaying(false);
           }
         }
-      } catch (e) {
-        console.warn('Failed to check relay status:', e);
+      } catch {
         setStreaming(false);
       }
     };
@@ -107,10 +106,7 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
     }
 
     // Prevent re-initialization while already initializing
-    if (isInitializingRef.current) {
-      console.log('HLS player already initializing, skipping...');
-      return;
-    }
+    if (isInitializingRef.current) return;
 
     const video = videoRef.current;
     if (!video) return;
@@ -134,10 +130,8 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
             // Verify we actually got manifest content (should start with #EXTM3U)
             const text = await response.text();
             if (text.includes('#EXTM3U')) {
-              console.log(`HLS manifest available after ${attempts * 500}ms`);
               return true;
             } else {
-              console.log(`HLS response OK but invalid manifest content (attempt ${attempts + 1}/${maxAttempts})`);
             }
           }
         } catch (error) {
@@ -148,7 +142,6 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
         setStatusMessage(`Waiting for HLS segments... (${attempts}/${maxAttempts})`);
       }
 
-      console.warn('HLS manifest not available after max attempts');
       return false;
     };
 
@@ -182,14 +175,14 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
       hlsRef.current = hls;
 
       hls.on(Hls.Events.ERROR, (event, data) => {
-        console.error('HLS error:', data);
+        // HLS error occurred
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
               // Exponential backoff: 3s, 6s, 12s, 24s, 48s (max 5 retries)
               if (retryCountRef.current < 5) {
                 const backoffDelay = Math.min(3000 * Math.pow(2, retryCountRef.current), 48000);
-                console.log(`Network error - retrying in ${backoffDelay}ms (attempt ${retryCountRef.current + 1}/5)`);
+                // Network error - retrying with backoff
                 setPlayerStatus('error');
                 setStatusMessage(`Network error, retrying in ${backoffDelay / 1000}s... (${retryCountRef.current + 1}/5)`);
                 retryCountRef.current++;
@@ -200,7 +193,7 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
                   hls.startLoad();
                 }, backoffDelay);
               } else {
-                console.error('Max retries reached, stopping HLS');
+                // Max retries reached
                 isInitializingRef.current = false;
                 setPlayerStatus('error');
                 setStatusMessage('Connection failed - max retries reached');
@@ -208,14 +201,14 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
               }
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
-              console.log('Media error - attempting recovery...');
+              // Media error - attempting recovery
               setPlayerStatus('unstable');
               setStatusMessage('Media error, recovering...');
               hls.recoverMediaError();
               break;
             default:
               // Only show error for non-recoverable issues
-              console.error('Fatal HLS error');
+              // Fatal HLS error
               isInitializingRef.current = false;
               setPlayerStatus('error');
               setStatusMessage('Fatal playback error');
@@ -243,7 +236,7 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
           setPlayerStatus('playing');
           setStatusMessage('');
         }).catch((e) => {
-          console.warn('Autoplay blocked - waiting for user interaction:', e);
+          // Autoplay blocked - waiting for user interaction
           setPlayerStatus('idle');
           setStatusMessage('Click to play');
         });
@@ -274,13 +267,13 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
           setPlayerStatus('playing');
           setStatusMessage('');
         }).catch((e) => {
-          console.warn('Autoplay blocked - waiting for user interaction:', e);
+          // Autoplay blocked - waiting for user interaction
           setPlayerStatus('idle');
           setStatusMessage('Click to play');
         });
       });
       video.addEventListener('error', () => {
-        console.warn('Native HLS playback error');
+        // Native HLS playback error
         isInitializingRef.current = false;
         setPlayerStatus('error');
         setStatusMessage('Playback error');
@@ -289,7 +282,7 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
         isInitializingRef.current = false; // Initialization complete for Safari
       });
     } else {
-      console.warn('HLS not supported in this browser');
+      // HLS not supported
       isInitializingRef.current = false;
       setPlayerStatus('error');
       setStatusMessage('HLS not supported');
@@ -354,7 +347,7 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
               video.play().then(() => {
                 setIsPlaying(true);
               }).catch((err) => {
-                console.warn('Manual play failed:', err);
+                // Manual play failed
               });
             } else if (!video.paused && streaming) {
               // If video is playing, clicking pauses it

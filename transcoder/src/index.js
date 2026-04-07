@@ -7,12 +7,25 @@ import os from 'node:os';
 import path from 'node:path';
 
 console.log('==> Transcoder starting...');
-console.log('==> DATABASE_URL:', process.env.DATABASE_URL ? 'set' : 'MISSING');
-console.log('==> AWS_REGION:', process.env.AWS_REGION || 'MISSING');
-console.log('==> S3_BUCKET_UPLOADS:', process.env.S3_BUCKET_UPLOADS || 'MISSING');
+
+// Fail fast on missing required env vars
+const REQUIRED_ENV = ['DATABASE_URL', 'AWS_REGION', 'S3_BUCKET_UPLOADS'];
+const missing = REQUIRED_ENV.filter(k => !process.env[k]);
+if (missing.length) {
+  console.error(`FATAL: Missing required env vars: ${missing.join(', ')}`);
+  process.exit(1);
+}
+
+console.log('==> DATABASE_URL:', 'set');
+console.log('==> AWS_REGION:', process.env.AWS_REGION);
+console.log('==> S3_BUCKET_UPLOADS:', process.env.S3_BUCKET_UPLOADS);
 console.log('==> AWS_ACCESS_KEY_ID:', process.env.AWS_ACCESS_KEY_ID ? 'set' : 'MISSING');
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+const isLocalDb = (process.env.DATABASE_URL || '').includes('localhost') || (process.env.DATABASE_URL || '').includes('127.0.0.1');
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ...(isLocalDb ? {} : { ssl: { rejectUnauthorized: process.env.NODE_ENV === 'production' } }),
+});
 const s3 = new S3Client({ region: process.env.AWS_REGION });
 const BUCKET = process.env.S3_BUCKET_UPLOADS;
 const TARGET_W = parseInt(process.env.TARGET_WIDTH || '1280', 10);
@@ -167,16 +180,18 @@ async function loop() {
   while (true) {
     try {
       pollCount++;
+      lastPollAt = Date.now();
       if (pollCount % 10 === 1) {
         console.log(`==> Poll #${pollCount}: Checking for pending jobs...`);
       }
       const job = await nextJob();
       if (!job) {
-        // No job found, wait and retry
+        // No job found — backoff: 2s initially, up to 10s after 10 empty polls
         if (pollCount === 1) {
           console.log('==> No jobs found on first poll. Waiting for jobs...');
         }
-        await new Promise(r => setTimeout(r, 2000));
+        const idleDelay = Math.min(2000 + (pollCount * 200), 10000);
+        await new Promise(r => setTimeout(r, idleDelay));
         continue;
       }
       console.log(`==> Processing job ${job.id} for asset ${job.asset_id} (attempt ${job.attempts})`);
@@ -205,6 +220,37 @@ async function loop() {
     }
   }
 }
+
+// Health check endpoint
+import http from 'node:http';
+const healthPort = process.env.PORT || 3002;
+let lastPollAt = Date.now();
+
+const healthServer = http.createServer((req, res) => {
+  if (req.url === '/healthz' || req.url === '/') {
+    const stale = Date.now() - lastPollAt > 30000; // 30s without poll = unhealthy
+    res.writeHead(stale ? 503 : 200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: !stale, lastPollAt: new Date(lastPollAt).toISOString() }));
+  } else {
+    res.writeHead(404);
+    res.end('not found');
+  }
+});
+healthServer.listen(healthPort, () => console.log(`==> Transcoder health on :${healthPort}`));
+
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  console.log('\n==> Received SIGTERM, shutting down...');
+  try { await pool.end(); } catch {}
+  healthServer.close();
+  process.exit(0);
+});
+process.on('SIGINT', async () => {
+  console.log('\n==> Received SIGINT, shutting down...');
+  try { await pool.end(); } catch {}
+  healthServer.close();
+  process.exit(0);
+});
 
 console.log('==> Starting worker loop...');
 loop();

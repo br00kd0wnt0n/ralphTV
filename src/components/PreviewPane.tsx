@@ -26,26 +26,31 @@ export default function PreviewPane({
     if (!asset || !containerRef.current) return;
     let player: Player | null = null;
     let mounted = true;
+    let objectUrl: string | null = null;
+
+    const createMediaEl = (src: string) => {
+      if (!containerRef.current || !mounted) return;
+      const el = document.createElement(asset.type === 'audio' ? 'audio' : 'video');
+      el.controls = true; el.autoplay = false; el.src = src; el.style.width = '100%';
+      containerRef.current.innerHTML = '';
+      containerRef.current.appendChild(el);
+    };
+
     (async () => {
       if (asset.vimeoReference && containerRef.current) {
         player = new Player(containerRef.current, { id: asset.vimeoReference, autoplay: false, muted: true });
       } else if (!asset.url && asset.s3Key) {
-        // fetch presigned GET url
         const res = await getAssetReadUrl(asset.id).catch(() => null);
-        if (res?.url && containerRef.current && mounted) {
-          const el = document.createElement(asset.type === 'audio' ? 'audio' : 'video');
-          el.controls = true; el.autoplay = false; el.src = res.url; el.style.width = '100%';
-          containerRef.current.innerHTML = '';
-          containerRef.current.appendChild(el);
-        }
-      } else if (asset.url && containerRef.current) {
-        const el = document.createElement(asset.type === 'audio' ? 'audio' : 'video');
-        el.controls = true; el.autoplay = false; el.src = asset.url; el.style.width = '100%';
-        containerRef.current.innerHTML = '';
-        containerRef.current.appendChild(el);
+        if (res?.url) createMediaEl(res.url);
+      } else if (asset.url) {
+        createMediaEl(asset.url);
       }
     })();
-    return () => { mounted = false; if (player) try { player.destroy(); } catch {} };
+    return () => {
+      mounted = false;
+      if (player) try { player.destroy(); } catch {}
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
   }, [asset]);
 
   const category = categories?.find(c => c.id === asset?.categoryId);
