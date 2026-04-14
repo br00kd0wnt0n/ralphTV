@@ -36,7 +36,8 @@ app.use(
 const isLocalDb = (process.env.DATABASE_URL || '').includes('localhost') || (process.env.DATABASE_URL || '').includes('127.0.0.1');
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ...(isLocalDb ? {} : { ssl: { rejectUnauthorized: process.env.NODE_ENV === 'production' } }),
+  // Railway Postgres uses self-signed certs — require SSL but don't verify the chain
+  ...(isLocalDb ? {} : { ssl: { rejectUnauthorized: false } }),
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,
