@@ -1,38 +1,35 @@
 import { CONFIG } from '../config';
+import { apiFetch } from './client';
 
-const base = () => (import.meta.env.VITE_STREAMER_BASE_URL || '').replace(/\/$/, '');
+// Control + status now go through the authenticated backend proxy
+// (/streamer/*). The streamer's control token lives server-side on the backend,
+// so it never ships in the browser bundle. apiFetch attaches the admin JWT.
+const api = (path: string) => `${CONFIG.API_BASE_URL}${path}`;
 
-// Auth header for /control/* — only sent when a control token is configured.
-const controlHeaders = (): Record<string, string> =>
-  CONFIG.STREAMER_CONTROL_TOKEN ? { Authorization: `Bearer ${CONFIG.STREAMER_CONTROL_TOKEN}` } : {};
+async function post(path: string) {
+  const res = await apiFetch(api(path), { method: 'POST' });
+  if (!res.ok) throw new Error(`${path} failed: ${res.status}`);
+  return res.json();
+}
 
 export async function streamerStatus() {
-  const url = `${base()}/status`;
-  const res = await fetch(url);
+  const res = await apiFetch(api('/streamer/status'));
   if (!res.ok) throw new Error(`streamer status failed: ${res.status}`);
   return res.json();
 }
 
 export async function streamerStart() {
-  const res = await fetch(`${base()}/control/start`, { method: 'POST', headers: controlHeaders() });
-  if (!res.ok) throw new Error(`streamer start failed: ${res.status}`);
-  return res.json();
+  return post('/streamer/control/start');
 }
 
 export async function streamerStop() {
-  const res = await fetch(`${base()}/control/stop`, { method: 'POST', headers: controlHeaders() });
-  if (!res.ok) throw new Error(`streamer stop failed: ${res.status}`);
-  return res.json();
+  return post('/streamer/control/stop');
 }
 
 export async function streamerRestart() {
-  const res = await fetch(`${base()}/control/restart`, { method: 'POST', headers: controlHeaders() });
-  if (!res.ok) throw new Error(`streamer restart failed: ${res.status}`);
-  return res.json();
+  return post('/streamer/control/restart');
 }
 
 export async function streamerTestSignal(seconds = 30) {
-  const res = await fetch(`${base()}/control/test-signal?seconds=${encodeURIComponent(String(seconds))}`, { method: 'POST', headers: controlHeaders() });
-  if (!res.ok) throw new Error(`streamer test-signal failed: ${res.status}`);
-  return res.json();
+  return post(`/streamer/control/test-signal?seconds=${encodeURIComponent(String(seconds))}`);
 }

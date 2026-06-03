@@ -189,7 +189,6 @@ Visit: `https://your-frontend-url.railway.app`
 | `VITE_CHANNEL` | `default` | Optional |
 | `VITE_WEEK` | `current` | Optional |
 | `VITE_REALTIME_URL` | WebSocket URL | Optional |
-| `VITE_STREAMER_CONTROL_TOKEN` | Streamer control token (see below) | Optional |
 
 ---
 
@@ -228,20 +227,24 @@ With `RELAY_PUBLISH_AUTH_URL` unset, ingest stays open (current behaviour).
 ### B. Streamer control-endpoint auth
 
 The streamer's `/control/start|stop|restart|test-signal` endpoints are unauthenticated
-by default — anyone who reaches the port can stop the broadcast. Set a token to require
-it. **Note:** the admin UI calls these from the browser, so this token is visible in the
-client bundle; it deters opportunistic scanners, not a determined attacker. (Proper fix,
-tracked separately: proxy control through the authenticated backend.)
+by default — anyone who reaches the port can stop the broadcast. The admin UI calls
+these **through the backend** (`/streamer/control/*`), which authenticates the admin's
+JWT and then forwards the request to the streamer using a server-side token. The token
+never reaches the browser.
 
-Set on the **streamer** service:
+Set the **same token** on **both** the streamer and the backend:
 ```bash
+# Streamer service — makes it enforce the token on /control/*:
+railway variables set STREAMER_CONTROL_TOKEN="2177cd9ea76fac161a4431dec31dfb6b44d209294110c168"
+
+# Backend service — used to call the streamer on the admin's behalf:
 railway variables set STREAMER_CONTROL_TOKEN="2177cd9ea76fac161a4431dec31dfb6b44d209294110c168"
 ```
-Set the matching value on the **frontend** service so the admin UI can call control:
-```bash
-railway variables set VITE_STREAMER_CONTROL_TOKEN="2177cd9ea76fac161a4431dec31dfb6b44d209294110c168"
-```
-With `STREAMER_CONTROL_TOKEN` unset, control endpoints stay open (current behaviour).
+The backend also needs `STREAMER_URL` set to the streamer's base URL (it already uses
+this for system-status checks). No frontend variable or rebuild is required.
+
+With `STREAMER_CONTROL_TOKEN` unset on the streamer, control endpoints stay open
+(current behaviour); the backend proxy still works (it just forwards without a token).
 
 ### Security env reference
 
@@ -252,7 +255,8 @@ With `STREAMER_CONTROL_TOKEN` unset, control endpoints stay open (current behavi
 | Backend | `RELAY_PUBLISH_KEY` | Same key; validates `/relay/publish-auth` | Opt-in |
 | Streamer | `RTMP_TARGET` | Must include `?key=<RELAY_PUBLISH_KEY>` when auth on | Opt-in |
 | Streamer | `STREAMER_CONTROL_TOKEN` | Token required on `/control/*` | Opt-in |
-| Frontend | `VITE_STREAMER_CONTROL_TOKEN` | Matching token for admin UI control calls | Opt-in |
+| Backend | `STREAMER_CONTROL_TOKEN` | Same token; backend forwards control as the admin | Opt-in |
+| Backend | `STREAMER_URL` | Streamer base URL the proxy calls | Required for control |
 
 ---
 

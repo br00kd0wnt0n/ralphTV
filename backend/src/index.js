@@ -56,6 +56,10 @@ if (!JWT_SECRET && process.env.NODE_ENV === 'production') {
 }
 const _JWT_SECRET = JWT_SECRET || 'dev-secret-change-me';
 const SERVICE_TOKEN = process.env.SERVICE_TOKEN || '';
+// Streamer control proxy config. STREAMER_CONTROL_TOKEN lives here (server-side) so
+// the admin browser never has to hold it.
+const STREAMER_BASE_URL = (process.env.STREAMER_URL || '').replace(/\/$/, '');
+const STREAMER_CONTROL_TOKEN = process.env.STREAMER_CONTROL_TOKEN || '';
 
 // Health
 app.get('/healthz', (req, res) => res.json({ ok: true }));
@@ -1159,6 +1163,51 @@ app.get('/api/debug/on-air', authMiddleware, async (req, res) => {
   }
 
   res.json(checks);
+});
+
+// Streamer control proxy. Authenticated as an admin here; the backend then calls the
+// streamer using the server-side STREAMER_CONTROL_TOKEN, so the secret never reaches
+// the browser. Replaces the old browser-direct calls to the streamer's /control/*.
+const STREAMER_CONTROL_ACTIONS = new Set(['start', 'stop', 'restart', 'test-signal']);
+function streamerAuthHeaders() {
+  return STREAMER_CONTROL_TOKEN ? { Authorization: `Bearer ${STREAMER_CONTROL_TOKEN}` } : {};
+}
+
+app.post('/streamer/control/:action', authMiddleware, requireWrite, async (req, res) => {
+  if (!STREAMER_BASE_URL) return res.status(501).json({ message: 'STREAMER_URL not configured' });
+  const { action } = req.params;
+  if (!STREAMER_CONTROL_ACTIONS.has(action)) return res.status(404).json({ message: 'Unknown action' });
+  let path = `/control/${action}`;
+  if (action === 'test-signal') {
+    const sec = parseInt(req.query.seconds, 10);
+    if (Number.isFinite(sec) && sec > 0) path += `?seconds=${sec}`;
+  }
+  try {
+    const r = await fetch(`${STREAMER_BASE_URL}${path}`, {
+      method: 'POST',
+      headers: streamerAuthHeaders(),
+      signal: AbortSignal.timeout(8000),
+    });
+    const body = await r.text();
+    return res.status(r.status).type('application/json').send(body || '{}');
+  } catch (e) {
+    console.error('streamer control proxy error', e?.message || e);
+    return res.status(502).json({ message: 'Streamer unreachable' });
+  }
+});
+
+app.get('/streamer/status', authMiddleware, async (_req, res) => {
+  if (!STREAMER_BASE_URL) return res.status(501).json({ message: 'STREAMER_URL not configured' });
+  try {
+    const r = await fetch(`${STREAMER_BASE_URL}/status`, {
+      headers: streamerAuthHeaders(),
+      signal: AbortSignal.timeout(8000),
+    });
+    const body = await r.text();
+    return res.status(r.status).type('application/json').send(body || '{}');
+  } catch (e) {
+    return res.status(502).json({ message: 'Streamer unreachable' });
+  }
 });
 
 // HTTP server + WebSocket
