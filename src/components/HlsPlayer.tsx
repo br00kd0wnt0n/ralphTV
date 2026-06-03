@@ -175,6 +175,27 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
       hlsRef.current = hls;
 
       hls.on(Hls.Events.ERROR, (event, data) => {
+        // Stream ended: when the broadcast stops, the relay 404s the live playlist.
+        // hls.js reports this as a NON-fatal level/manifest load error and keeps
+        // retrying on its own schedule, spamming 404s forever. Detect that specific
+        // case and tear the player down quietly; the relay-status poll will bring it
+        // back when the stream returns.
+        if (
+          data?.response?.code === 404 &&
+          (data.details === Hls.ErrorDetails.LEVEL_LOAD_ERROR ||
+            data.details === Hls.ErrorDetails.MANIFEST_LOAD_ERROR)
+        ) {
+          if (retryTimeoutRef.current) { clearTimeout(retryTimeoutRef.current); retryTimeoutRef.current = null; }
+          isInitializingRef.current = false;
+          setIsPlaying(false);
+          setPlayerStatus('idle');
+          setStatusMessage('');
+          setStreaming(false); // show "Waiting…"; poll re-inits when the stream is back
+          try { hls.stopLoad(); } catch {}
+          try { hls.destroy(); } catch {}
+          if (hlsRef.current === hls) hlsRef.current = null;
+          return;
+        }
         // HLS error occurred
         if (data.fatal) {
           switch (data.type) {

@@ -126,6 +126,19 @@ export function useHls(video: HTMLVideoElement | null, opts: UseHlsOpts = {}) {
       hls.on(Hls.Events.FRAG_LOADED, () => { setLive(true); });
       hls.on(Hls.Events.BUFFER_APPENDED, () => { setLive(true); });
       hls.on(Hls.Events.ERROR, (_evt, data) => {
+        // Stream ended: the relay 404s the live playlist when the broadcast stops.
+        // Stop loading immediately so hls.js doesn't loop on the 404; the status
+        // poll calls startLoad() again (resetting stoppedRef) when the stream returns.
+        if (
+          data?.response?.code === 404 &&
+          (data.details === Hls.ErrorDetails.LEVEL_LOAD_ERROR ||
+            data.details === Hls.ErrorDetails.MANIFEST_LOAD_ERROR)
+        ) {
+          setLive(false);
+          setState('offline');
+          try { hls.stopLoad(); stoppedRef.current = true; } catch {}
+          return;
+        }
         if (data.fatal) {
           if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
             setState('error');
