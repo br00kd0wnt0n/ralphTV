@@ -1,8 +1,11 @@
 [phases.setup]
 nixPkgs = ["nodejs_20"]
 
+# --include=dev forces devDependencies (vite, typescript, etc.) to install even when
+# NODE_ENV=production is set on the service. Without it, `vite build` fails with
+# "vite: not found" because production installs omit devDependencies.
 [phases.install]
-cmds = ["rm -f package-lock.json", "npm install --no-package-lock"]
+cmds = ["rm -f package-lock.json", "npm install --include=dev --no-package-lock"]
 
 [phases.build]
 cmds = ["npm run build"]
