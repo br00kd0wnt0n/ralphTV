@@ -189,6 +189,70 @@ Visit: `https://your-frontend-url.railway.app`
 | `VITE_CHANNEL` | `default` | Optional |
 | `VITE_WEEK` | `current` | Optional |
 | `VITE_REALTIME_URL` | WebSocket URL | Optional |
+| `VITE_STREAMER_CONTROL_TOKEN` | Streamer control token (see below) | Optional |
+
+---
+
+## Optional Security Hardening (opt-in)
+
+These features are **disabled until you set the env var**, so existing deploys keep
+working. Turn them on once you've pasted the secrets into Railway. Example secrets are
+pre-generated below — generate your own with `openssl rand -hex 24` for real use.
+
+### A. Relay RTMP publish auth
+
+By default the relay accepts an RTMP publish on `rtmp://<relay>/live/<name>` from
+**anyone** who can reach it — meaning a stranger could push into your stream and get
+re-broadcast to your YouTube/Twitch keys. Enabling this requires every publisher to
+present a shared key.
+
+Set on the **relay** service:
+```bash
+railway variables set RELAY_PUBLISH_KEY="4314a9d555492d77757e7363f6a4929e7b097870045bc2f4"
+# Point the relay at the backend's validation endpoint (Railway private networking):
+railway variables set RELAY_PUBLISH_AUTH_URL="http://<backend-internal-host>:<port>/relay/publish-auth"
+```
+Set the **same key** on the **backend** service so it can validate:
+```bash
+railway variables set RELAY_PUBLISH_KEY="4314a9d555492d77757e7363f6a4929e7b097870045bc2f4"
+```
+Then update every publisher to append the key as a query arg on the publish URL
+(the HLS playback path is unchanged — the key never appears in viewer URLs):
+```bash
+# Streamer service:
+railway variables set RTMP_TARGET="rtmp://<relay-host>:1935/live/stream?key=4314a9d555492d77757e7363f6a4929e7b097870045bc2f4"
+# OBS: Server = rtmp://<relay-host>:1935/live , Stream Key = stream?key=4314a9d5...
+```
+With `RELAY_PUBLISH_AUTH_URL` unset, ingest stays open (current behaviour).
+
+### B. Streamer control-endpoint auth
+
+The streamer's `/control/start|stop|restart|test-signal` endpoints are unauthenticated
+by default — anyone who reaches the port can stop the broadcast. Set a token to require
+it. **Note:** the admin UI calls these from the browser, so this token is visible in the
+client bundle; it deters opportunistic scanners, not a determined attacker. (Proper fix,
+tracked separately: proxy control through the authenticated backend.)
+
+Set on the **streamer** service:
+```bash
+railway variables set STREAMER_CONTROL_TOKEN="2177cd9ea76fac161a4431dec31dfb6b44d209294110c168"
+```
+Set the matching value on the **frontend** service so the admin UI can call control:
+```bash
+railway variables set VITE_STREAMER_CONTROL_TOKEN="2177cd9ea76fac161a4431dec31dfb6b44d209294110c168"
+```
+With `STREAMER_CONTROL_TOKEN` unset, control endpoints stay open (current behaviour).
+
+### Security env reference
+
+| Service | Variable | Purpose | Required |
+|---------|----------|---------|----------|
+| Relay | `RELAY_PUBLISH_KEY` | Shared key publishers must present | Opt-in |
+| Relay | `RELAY_PUBLISH_AUTH_URL` | Backend endpoint that validates publishes | Opt-in |
+| Backend | `RELAY_PUBLISH_KEY` | Same key; validates `/relay/publish-auth` | Opt-in |
+| Streamer | `RTMP_TARGET` | Must include `?key=<RELAY_PUBLISH_KEY>` when auth on | Opt-in |
+| Streamer | `STREAMER_CONTROL_TOKEN` | Token required on `/control/*` | Opt-in |
+| Frontend | `VITE_STREAMER_CONTROL_TOKEN` | Matching token for admin UI control calls | Opt-in |
 
 ---
 
