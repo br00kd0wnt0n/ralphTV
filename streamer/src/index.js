@@ -649,8 +649,30 @@ async function main() {
     // Basic CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Control-Token');
     if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+
+    // Opt-in auth for the state-changing /control/* endpoints. When
+    // STREAMER_CONTROL_TOKEN is set, every control call must present it as a Bearer
+    // token (or X-Control-Token header). When it is unset, enforcement is disabled
+    // so existing deploys keep working until the secret is configured.
+    // NOTE: the admin UI calls these endpoints directly from the browser, so this
+    // token ends up in client JS — it stops opportunistic scanners, not a determined
+    // attacker. Proper fix (tracked as follow-up): proxy control through the backend,
+    // which already authenticates the admin and holds the streamer's service token.
+    if (req.url && req.url.startsWith('/control/')) {
+      const required = process.env.STREAMER_CONTROL_TOKEN || '';
+      if (required) {
+        const header = req.headers['authorization'] || '';
+        const bearer = header.startsWith('Bearer ') ? header.slice(7) : '';
+        const provided = bearer || req.headers['x-control-token'] || '';
+        if (String(provided) !== String(required)) {
+          res.writeHead(401, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'unauthorized' }));
+          return;
+        }
+      }
+    }
 
     if (req.url && (req.url === '/' || req.url.startsWith('/healthz'))) {
       res.writeHead(200, { 'Content-Type': 'text/plain' });

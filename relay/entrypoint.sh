@@ -25,11 +25,22 @@ export NGINX_WORKER_PROCESSES="${NGINX_WORKER_PROCESSES:-auto}"
 PUSH_LINES=""
 PUSH_JSON_ARRAY=""
 
+# Strict allowlist for push URLs. These values are interpolated directly into the
+# nginx config, so a value containing ';', '}', whitespace or a newline could inject
+# arbitrary nginx directives. Reject anything that isn't a plain rtmp(s) URL.
+RTMP_URL_RE='^rtmps?://[A-Za-z0-9._~:/?=&%@-]+$'
+
 for i in 1 2 3 4 5; do
   VAR="RELAY_PUSH_${i}"
   VAL="${!VAR:-}"
   if [ -n "$VAL" ]; then
-    echo "==> Found RELAY_PUSH_${i}: $VAL"
+    if ! [[ "$VAL" =~ $RTMP_URL_RE ]]; then
+      echo "ERROR: RELAY_PUSH_${i} is not a valid rtmp(s) URL; refusing to start" >&2
+      exit 1
+    fi
+    # Redact the stream key (last path segment) so secrets never reach Railway logs.
+    REDACTED="$(echo "$VAL" | sed -E 's|/[^/]+$|/***|')"
+    echo "==> Found RELAY_PUSH_${i}: ${REDACTED}"
     PUSH_LINES+=$'      push '
     PUSH_LINES+="$VAL"
     PUSH_LINES+=$';\n'
@@ -44,6 +55,24 @@ for i in 1 2 3 4 5; do
 done
 
 export RELAY_PUSH_LINES="$PUSH_LINES"
+
+# Opt-in RTMP publish auth. When RELAY_PUBLISH_AUTH_URL is set, nginx-rtmp POSTs every
+# publish attempt to that URL (the backend validates the ?key= arg against
+# RELAY_PUBLISH_KEY and returns 2xx to allow, 4xx to deny). Unset => open ingest,
+# preserving current behaviour until you configure it.
+RELAY_ON_PUBLISH=""
+HTTP_URL_RE='^https?://[A-Za-z0-9._~:/?=&%@-]+$'
+if [ -n "${RELAY_PUBLISH_AUTH_URL:-}" ]; then
+  if ! [[ "${RELAY_PUBLISH_AUTH_URL}" =~ $HTTP_URL_RE ]]; then
+    echo "ERROR: RELAY_PUBLISH_AUTH_URL is not a valid http(s) URL; refusing to start" >&2
+    exit 1
+  fi
+  RELAY_ON_PUBLISH="on_publish ${RELAY_PUBLISH_AUTH_URL};"
+  echo "==> Publish auth ENABLED (on_publish -> ${RELAY_PUBLISH_AUTH_URL})"
+else
+  echo "==> Publish auth DISABLED (set RELAY_PUBLISH_AUTH_URL to enable)"
+fi
+export RELAY_ON_PUBLISH
 
 # Generate JSON files for API endpoints
 echo "==> Creating directories..."
@@ -66,7 +95,7 @@ echo "==> RELAY_HTTP_PORT=${RELAY_HTTP_PORT}"
 echo "==> RELAY_RTMP_PORT=${RELAY_RTMP_PORT}"
 echo "==> NGINX_WORKER_PROCESSES=${NGINX_WORKER_PROCESSES}"
 # Only substitute our variables, not nginx variables like $request_method
-envsubst '${NGINX_WORKER_PROCESSES} ${RELAY_RTMP_PORT} ${RELAY_PUSH_LINES} ${RELAY_HTTP_PORT}' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
+envsubst '${NGINX_WORKER_PROCESSES} ${RELAY_RTMP_PORT} ${RELAY_PUSH_LINES} ${RELAY_ON_PUBLISH} ${RELAY_HTTP_PORT}' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
 
 echo "==> Generated config:"
 cat /etc/nginx/nginx.conf

@@ -12,7 +12,17 @@ export class RealtimeClient {
     if (!CONFIG.REALTIME_URL) return;
     if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) return;
     try {
-      this.ws = new WebSocket(CONFIG.REALTIME_URL);
+      // The backend now requires a valid token on the WS handshake. Pass the JWT
+      // (or the service token, if this build uses one) as a query param.
+      let url = CONFIG.REALTIME_URL;
+      const token = (() => { try { return localStorage.getItem('token'); } catch { return null; } })();
+      const serviceToken = CONFIG.API_AUTH_TOKEN || '';
+      if (token) {
+        url += (url.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(token);
+      } else if (serviceToken) {
+        url += (url.includes('?') ? '&' : '?') + 'service_token=' + encodeURIComponent(serviceToken);
+      }
+      this.ws = new WebSocket(url);
       this.ws.onopen = () => {
         this.retryCount = 0; // Reset on successful connection
         for (const topic of this.handlers.keys()) this.send({ type: 'subscribe', topic });
@@ -27,9 +37,16 @@ export class RealtimeClient {
           set.forEach((h) => h(data));
         } catch {}
       };
-      this.ws.onclose = () => {
+      this.ws.onclose = (ev) => {
+        // 1008 = policy violation (our backend's "Unauthorized"). Retrying with the
+        // same bad/expired/missing token just loops, so stop and let a fresh login
+        // (which re-instantiates the client) re-establish the connection.
+        if (ev && ev.code === 1008) return;
         if (this.retryCount >= this.maxRetries) return;
-        const delay = Math.min(1500 * Math.pow(2, this.retryCount), 30000);
+        // Exponential backoff with jitter so many tabs don't reconnect in lockstep
+        // when the backend restarts.
+        const base = Math.min(1500 * Math.pow(2, this.retryCount), 30000);
+        const delay = base * (0.5 + Math.random());
         this.retryCount++;
         setTimeout(() => this.connect(), delay);
       };

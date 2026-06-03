@@ -61,6 +61,25 @@ const SERVICE_TOKEN = process.env.SERVICE_TOKEN || '';
 app.get('/healthz', (req, res) => res.json({ ok: true }));
 app.get('/health', (req, res) => res.json({ ok: true }));
 
+// nginx-rtmp publish-auth callback (opt-in; wired via the relay's
+// RELAY_PUBLISH_AUTH_URL). nginx posts urlencoded fields including the publish query
+// args, so a publisher pushing rtmp://relay/live/stream?key=SECRET arrives here with
+// body.key=SECRET. We allow only when it matches RELAY_PUBLISH_KEY. Intentionally
+// unauthenticated — nginx-rtmp can't carry a bearer token — but it reveals nothing and
+// only ever returns allow/deny. Returns 2xx to allow publishing, 403 to reject.
+const RELAY_PUBLISH_KEY = process.env.RELAY_PUBLISH_KEY || '';
+app.post('/relay/publish-auth', express.urlencoded({ extended: false }), (req, res) => {
+  if (!RELAY_PUBLISH_KEY) {
+    // Callback is wired but no key configured — fail closed rather than allow all.
+    console.error('[relay] publish-auth called but RELAY_PUBLISH_KEY is unset; denying');
+    return res.status(403).end();
+  }
+  const provided = req.body?.key || '';
+  if (String(provided) === String(RELAY_PUBLISH_KEY)) return res.status(201).end();
+  console.warn(`[relay] publish rejected name=${req.body?.name || '?'} addr=${req.body?.addr || '?'}`);
+  return res.status(403).end();
+});
+
 // Auth helpers
 function signToken(payload) {
   return jwt.sign(payload, _JWT_SECRET, { expiresIn: '2h' });
@@ -78,12 +97,31 @@ function authMiddleware(req, res, next) {
   }
   if (!bearer) return res.status(403).json({ message: 'No token provided' });
   try {
-    const decoded = jwt.verify(bearer, _JWT_SECRET);
+    // Pin the algorithm so a token can't downgrade to alg:none / RS256 confusion.
+    const decoded = jwt.verify(bearer, _JWT_SECRET, { algorithms: ['HS256'] });
     req.user = decoded;
     next();
   } catch (e) {
     return res.status(401).json({ message: 'Unauthorized' });
   }
+}
+
+// Gate for state-mutating routes. Admins and the service worker always pass.
+// Tokens with NO role claim are allowed too (the Ralph.World CMS SSO bridge does
+// not yet stamp a role) but are logged so we can tighten this once the CMS adds
+// role:'admin'. Any token carrying an explicit non-admin role (e.g. 'viewer') is
+// rejected — that is the actual privilege boundary we're protecting.
+function requireWrite(req, res, next) {
+  const role = req.user?.role;
+  if (role === 'admin' || role === 'service') return next();
+  if (role === undefined || role === null || role === '') {
+    console.warn(
+      `[authz] write allowed for roleless token user=${req.user?.email || req.user?.userId || 'unknown'} ` +
+      `path=${req.method} ${req.path} — CMS should stamp role:'admin' on SSO tokens`
+    );
+    return next();
+  }
+  return res.status(403).json({ message: 'Admin access required' });
 }
 
 // Auth routes
@@ -109,7 +147,7 @@ app.get('/api/protected', authMiddleware, (req, res) => {
 });
 
 // Uploads
-app.post('/uploads/init', authMiddleware, async (req, res) => {
+app.post('/uploads/init', authMiddleware, requireWrite, async (req, res) => {
   const { fileName, mimeType, size } = req.body || {};
   if (!fileName || !mimeType || typeof size !== 'number') return res.status(400).json({ message: 'Missing fields' });
   if (!hasS3) return res.status(501).json({ message: 'S3 not configured' });
@@ -156,7 +194,7 @@ app.post('/uploads/init', authMiddleware, async (req, res) => {
   }
 });
 
-app.post('/uploads/complete', authMiddleware, async (req, res) => {
+app.post('/uploads/complete', authMiddleware, requireWrite, async (req, res) => {
   const { fileId, uploadId, parts, s3Key, fileName, mimeType, size, durationSec } = req.body || {};
   if (!fileId) return res.status(400).json({ message: 'Missing fileId' });
   if (!hasS3) return res.status(501).json({ message: 'S3 not configured' });
@@ -195,7 +233,7 @@ app.post('/uploads/complete', authMiddleware, async (req, res) => {
 });
 
 // Per-part presign URL for multipart upload
-app.get('/uploads/part-url', authMiddleware, async (req, res) => {
+app.get('/uploads/part-url', authMiddleware, requireWrite, async (req, res) => {
   if (!hasS3) return res.status(501).json({ message: 'S3 not configured' });
   const { uploadId, key, partNumber } = req.query || {};
   const pn = parseInt(partNumber, 10);
@@ -238,7 +276,7 @@ app.get('/schedule/:channel/:week/:day', authMiddleware, async (req, res) => {
   }
 });
 
-app.put('/schedule/:channel/:week/:day', authMiddleware, async (req, res) => {
+app.put('/schedule/:channel/:week/:day', authMiddleware, requireWrite, async (req, res) => {
   const { channel, week, day } = req.params;
   const { items, playbackMode, playStart } = req.body || {};
   const ifMatch = parseInt(req.headers['if-match'] || '0', 10) || 0;
@@ -277,7 +315,7 @@ app.put('/schedule/:channel/:week/:day', authMiddleware, async (req, res) => {
   }
 });
 
-app.patch('/schedule/:channel/:week/:day', authMiddleware, async (req, res) => {
+app.patch('/schedule/:channel/:week/:day', authMiddleware, requireWrite, async (req, res) => {
   const { channel, week, day } = req.params;
   const { ops, playbackMode, playStart } = req.body || {};
   const ifMatch = parseInt(req.headers['if-match'] || '0', 10) || 0;
@@ -329,7 +367,7 @@ app.patch('/schedule/:channel/:week/:day', authMiddleware, async (req, res) => {
 });
 
 // Tags endpoint
-app.post('/assets/:id/tags', authMiddleware, async (req, res) => {
+app.post('/assets/:id/tags', authMiddleware, requireWrite, async (req, res) => {
   const assetId = req.params.id;
   const { tags } = req.body || {};
   if (!Array.isArray(tags)) return res.status(400).json({ message: 'Invalid tags' });
@@ -375,7 +413,7 @@ app.get('/categories', authMiddleware, async (_req, res) => {
   }
 });
 
-app.post('/categories', authMiddleware, async (req, res) => {
+app.post('/categories', authMiddleware, requireWrite, async (req, res) => {
   const { name, color } = req.body || {};
   if (!name || !color) return res.status(400).json({ message: 'Missing fields' });
   try {
@@ -389,7 +427,7 @@ app.post('/categories', authMiddleware, async (req, res) => {
   }
 });
 
-app.patch('/categories/:id', authMiddleware, async (req, res) => {
+app.patch('/categories/:id', authMiddleware, requireWrite, async (req, res) => {
   const id = req.params.id;
   const { name, color } = req.body || {};
   try {
@@ -404,7 +442,7 @@ app.patch('/categories/:id', authMiddleware, async (req, res) => {
   }
 });
 
-app.delete('/categories/:id', authMiddleware, async (req, res) => {
+app.delete('/categories/:id', authMiddleware, requireWrite, async (req, res) => {
   const id = req.params.id;
   try {
     await pool.query('delete from categories where id=$1', [id]);
@@ -417,7 +455,7 @@ app.delete('/categories/:id', authMiddleware, async (req, res) => {
 });
 
 // Asset category, asset list, and duration update
-app.post('/assets/:id/category', authMiddleware, async (req, res) => {
+app.post('/assets/:id/category', authMiddleware, requireWrite, async (req, res) => {
   const id = req.params.id;
   const { categoryId } = req.body || {};
   try {
@@ -481,7 +519,7 @@ app.get('/assets/:id/url', authMiddleware, async (req, res) => {
 });
 
 // Update duration
-app.post('/assets/:id/duration', authMiddleware, async (req, res) => {
+app.post('/assets/:id/duration', authMiddleware, requireWrite, async (req, res) => {
   const id = req.params.id;
   const { durationSec } = req.body || {};
   if (typeof durationSec !== 'number' || durationSec <= 0) return res.status(400).json({ message: 'Invalid duration' });
@@ -495,7 +533,7 @@ app.post('/assets/:id/duration', authMiddleware, async (req, res) => {
 });
 
 // Update asset name
-app.post('/assets/:id/name', authMiddleware, async (req, res) => {
+app.post('/assets/:id/name', authMiddleware, requireWrite, async (req, res) => {
   const id = req.params.id;
   const { name } = req.body || {};
   if (typeof name !== 'string' || !name.trim()) return res.status(400).json({ message: 'Invalid name' });
@@ -508,7 +546,7 @@ app.post('/assets/:id/name', authMiddleware, async (req, res) => {
   }
 });
 
-app.delete('/assets/:id', authMiddleware, async (req, res) => {
+app.delete('/assets/:id', authMiddleware, requireWrite, async (req, res) => {
   const id = req.params.id;
   try {
     // Delete from database (cascade will handle scheduled_items references)
@@ -529,7 +567,7 @@ app.delete('/assets/:id', authMiddleware, async (req, res) => {
 });
 
 // Stream action logging
-app.post('/stream-actions/log', authMiddleware, async (req, res) => {
+app.post('/stream-actions/log', authMiddleware, requireWrite, async (req, res) => {
   const { action } = req.body || {};
   if (!action || !['start', 'stop', 'restart'].includes(action)) {
     return res.status(400).json({ message: 'Invalid action' });
@@ -1129,16 +1167,27 @@ const wss = new WebSocketServer({ server });
 
 const subs = new Map(); // topic -> Set(ws)
 const MAX_TOPICS_PER_CLIENT = 20;
-const ALLOWED_TOPIC_PREFIXES = ['schedule:', 'categories', 'stream-actions'];
+// `categories` and `stream-actions` are exact-match topics; only `schedule:` is a
+// prefix namespace (schedule:<channel>:<week>:<day>). Exact-matching the first two
+// stops a client from registering arbitrary keys like "categories-attacker".
+const EXACT_TOPICS = new Set(['categories', 'stream-actions']);
+const SCHEDULE_TOPIC_RE = /^schedule:[A-Za-z0-9_-]+:[A-Za-z0-9_-]+:[A-Za-z0-9_-]+$/;
+function isAllowedTopic(topic) {
+  if (typeof topic !== 'string') return false;
+  if (EXACT_TOPICS.has(topic)) return true;
+  return SCHEDULE_TOPIC_RE.test(topic);
+}
 
 wss.on('connection', (ws, req) => {
-  // Optional token auth from query string
+  // Require a valid JWT or the service token on the WS handshake. Realtime carries
+  // every schedule/category mutation, so an unauthenticated subscriber would be an
+  // information leak. Reject up front rather than silently accepting.
   let authenticated = false;
   try {
     const url = new URL(req.url, 'http://localhost');
     const token = url.searchParams.get('token');
     if (token) {
-      jwt.verify(token, _JWT_SECRET);
+      jwt.verify(token, _JWT_SECRET, { algorithms: ['HS256'] });
       authenticated = true;
     } else if (SERVICE_TOKEN) {
       const svc = url.searchParams.get('service_token');
@@ -1146,15 +1195,19 @@ wss.on('connection', (ws, req) => {
     }
   } catch {}
 
+  if (!authenticated) {
+    try { ws.close(1008, 'Unauthorized'); } catch {}
+    return;
+  }
+
   let clientTopicCount = 0;
 
   ws.on('message', (raw) => {
     try {
       const msg = JSON.parse(raw.toString());
       if (msg?.type === 'subscribe' && msg.topic) {
-        // Validate topic prefix
-        const validTopic = ALLOWED_TOPIC_PREFIXES.some(p => msg.topic === p || msg.topic.startsWith(p));
-        if (!validTopic) return;
+        // Validate topic against the strict allowlist
+        if (!isAllowedTopic(msg.topic)) return;
         // Limit topics per client
         if (clientTopicCount >= MAX_TOPICS_PER_CLIENT) return;
         if (!subs.has(msg.topic)) subs.set(msg.topic, new Set());
