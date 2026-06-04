@@ -1,10 +1,17 @@
 import { CONFIG } from '../config';
 
 /**
- * Global 401 handler - clears token and reloads to login
+ * Global 401 handler - clears the token and all cached app data, then reloads to
+ * login. Clearing the ralphTV.* caches prevents the previous user's schedule /
+ * assets / categories from leaking to the next login on a shared machine.
  */
 function handle401() {
-  localStorage.removeItem('token');
+  try {
+    localStorage.removeItem('token');
+    localStorage.removeItem('ralphTV.assets.v1');
+    localStorage.removeItem('ralphTV.schedule.v1');
+    localStorage.removeItem('ralphTV.categories.v1');
+  } catch {}
   // Reload the page to force re-login
   window.location.href = '/';
 }

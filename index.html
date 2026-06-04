@@ -2,6 +2,15 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!--
+      Conservative CSP. Permissive on connect/img/media (https:/wss:) so dynamic
+      Railway API/WS, S3 presigned URLs and Vimeo keep working without hardcoding
+      per-env hosts; 'unsafe-inline' style is required by react-beautiful-dnd's
+      injected <style>; worker blob: is required by hls.js. Locks down the XSS-prone
+      bits: object-src none, base-uri/form-action self. No frame-ancestors so the
+      /embed player can still be iframed by partner sites.
+    -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https: wss:; worker-src 'self' blob:; font-src 'self' data:; frame-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'self'" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>RalphTV Broadcaster</title>
     <meta name="description" content="RalphTV Broadcaster - Professional streaming and content scheduling platform" />

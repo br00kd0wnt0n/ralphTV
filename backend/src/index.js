@@ -19,7 +19,36 @@ import { WebSocketServer } from 'ws';
 import { computePointer } from './feed.js';
 
 const app = express();
+// Behind Railway's proxy — trust the first hop so req.ip is the real client (needed
+// for the login rate limiter below).
+app.set('trust proxy', 1);
 app.use(express.json({ limit: '10mb' }));
+
+// Minimal in-memory fixed-window rate limiter (no external dependency). Keyed by IP;
+// state is per-instance and resets on restart, which is fine for brute-force defense.
+function rateLimiter({ windowMs, max, keyPrefix = 'rl' }) {
+  const hits = new Map(); // key -> { count, resetAt }
+  // Periodic sweep so the Map can't grow unbounded.
+  setInterval(() => {
+    const now = Date.now();
+    for (const [k, e] of hits) if (e.resetAt <= now) hits.delete(k);
+  }, windowMs).unref();
+  return (req, res, next) => {
+    const now = Date.now();
+    const key = `${keyPrefix}:${req.ip || 'unknown'}`;
+    let e = hits.get(key);
+    if (!e || e.resetAt <= now) { e = { count: 0, resetAt: now + windowMs }; hits.set(key, e); }
+    e.count++;
+    if (e.count > max) {
+      res.set('Retry-After', String(Math.ceil((e.resetAt - now) / 1000)));
+      return res.status(429).json({ message: 'Too many requests, please try again later' });
+    }
+    next();
+  };
+}
+
+// Strict limiter for credential auth: 10 attempts per 15 min per IP.
+const loginLimiter = rateLimiter({ windowMs: 15 * 60 * 1000, max: 10, keyPrefix: 'login' });
 
 const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || '*')
   .split(',')
@@ -129,7 +158,7 @@ function requireWrite(req, res, next) {
 }
 
 // Auth routes
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', loginLimiter, async (req, res) => {
   const { email, password } = req.body || {};
   if (!email || !password) return res.status(400).json({ message: 'Missing credentials' });
   try {
@@ -471,8 +500,12 @@ app.post('/assets/:id/category', authMiddleware, requireWrite, async (req, res) 
   }
 });
 
-app.get('/assets', authMiddleware, async (_req, res) => {
+app.get('/assets', authMiddleware, async (req, res) => {
   try {
+    // Bounded by default so the response can't grow without limit as the library
+    // grows. Optional ?limit (max 2000) & ?offset for pagination; shape unchanged.
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 1000, 1), 2000);
+    const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
     const { rows } = await pool.query(`
       select a.id, a.file_name, a.mime_type, a.size, a.s3_key, a.file_type, a.uploaded_at, a.vimeo_reference, a.duration_sec, a.thumbnail_url, a.category_id, a.norm_status, a.s3_key_norm,
              coalesce(array_agg(t.name) filter (where t.name is not null), '{}') as tags
@@ -481,7 +514,8 @@ app.get('/assets', authMiddleware, async (_req, res) => {
       left join tags t on t.id = at.tag_id
       group by a.id
       order by a.uploaded_at desc
-    `);
+      limit $1 offset $2
+    `, [limit, offset]);
     return res.json({ assets: rows });
   } catch (e) {
     console.error('assets list error', e);
@@ -643,6 +677,7 @@ app.get('/feed/rss', async (_req, res) => {
       from assets
       where file_type = 'video' and norm_status = 'ready' and s3_key_norm is not null
       order by uploaded_at desc
+      limit 500
     `);
 
     const baseUrl = R2_PUBLIC_URL.replace(/\/$/, '');
@@ -795,6 +830,7 @@ app.get('/debug/normalized', authMiddleware, async (_req, res) => {
       select id, file_name, norm_status, s3_key_norm
       from assets
       order by uploaded_at desc
+      limit 500
     `);
     return res.json({ assets: rows });
   } catch (e) {
@@ -901,7 +937,7 @@ app.get('/api/relay/status', async (req, res) => {
     return res.json({ streaming: false, available: false });
   }
   try {
-    const response = await fetch(`${RELAY_URL}/api/status`, { timeout: 3000 });
+    const response = await fetch(`${RELAY_URL}/api/status`, { signal: AbortSignal.timeout(3000) });
     if (!response.ok) throw new Error(`Relay status: ${response.status}`);
     const data = await response.json();
     res.json({ ...data, available: true });
@@ -916,7 +952,7 @@ app.get('/api/relay/destinations', async (req, res) => {
     return res.json({ destinations: [] });
   }
   try {
-    const response = await fetch(`${RELAY_URL}/api/destinations`, { timeout: 3000 });
+    const response = await fetch(`${RELAY_URL}/api/destinations`, { signal: AbortSignal.timeout(3000) });
     if (!response.ok) throw new Error(`Relay destinations: ${response.status}`);
     const data = await response.json();
     res.json(data);
@@ -931,7 +967,7 @@ app.get('/api/relay/healthz', async (req, res) => {
     return res.json({ available: false, error: 'RELAY_URL not configured' });
   }
   try {
-    const response = await fetch(`${RELAY_URL}/healthz`, { timeout: 3000 });
+    const response = await fetch(`${RELAY_URL}/healthz`, { signal: AbortSignal.timeout(3000) });
     if (!response.ok) throw new Error(`Relay health: ${response.status}`);
     res.json({ available: true, url: RELAY_URL });
   } catch (e) {
@@ -979,7 +1015,7 @@ app.get('/api/system/status', async (req, res) => {
     });
   } else {
     try {
-      const healthRes = await fetch(`${RELAY_URL}/healthz`, { timeout: 3000 });
+      const healthRes = await fetch(`${RELAY_URL}/healthz`, { signal: AbortSignal.timeout(3000) });
       if (healthRes.ok) {
         status.services.push({
           name: 'Relay Service',
@@ -1013,7 +1049,7 @@ app.get('/api/system/status', async (req, res) => {
   } else {
     try {
       // Check /status endpoint for detailed info (includes running state)
-      const streamerRes = await fetch(`${STREAMER_URL}/status`, { timeout: 3000 });
+      const streamerRes = await fetch(`${STREAMER_URL}/status`, { signal: AbortSignal.timeout(3000) });
       if (streamerRes.ok) {
         const streamerData = await streamerRes.json();
         status.services.push({
@@ -1040,13 +1076,13 @@ app.get('/api/system/status', async (req, res) => {
   // 5. HLS Stream (check if relay is receiving and generating segments)
   if (RELAY_URL) {
     try {
-      const statusRes = await fetch(`${RELAY_URL}/api/status`, { timeout: 3000 });
+      const statusRes = await fetch(`${RELAY_URL}/api/status`, { signal: AbortSignal.timeout(3000) });
       const statusData = await statusRes.json();
 
       if (statusData.streaming) {
         // Verify HLS manifest exists
         try {
-          const hlsRes = await fetch(`${RELAY_URL}/hls/stream.m3u8`, { timeout: 3000 });
+          const hlsRes = await fetch(`${RELAY_URL}/hls/stream.m3u8`, { signal: AbortSignal.timeout(3000) });
           if (hlsRes.ok) {
             const text = await hlsRes.text();
             if (text.includes('#EXTM3U')) {
@@ -1101,7 +1137,7 @@ app.get('/api/system/status', async (req, res) => {
   // 6. YouTube Push
   if (RELAY_URL) {
     try {
-      const destRes = await fetch(`${RELAY_URL}/api/destinations`, { timeout: 3000 });
+      const destRes = await fetch(`${RELAY_URL}/api/destinations`, { signal: AbortSignal.timeout(3000) });
       const destData = await destRes.json();
 
       if (destData.destinations && destData.destinations.includes('youtube')) {
@@ -1146,7 +1182,7 @@ app.get('/api/debug/on-air', authMiddleware, async (req, res) => {
   // Check relay status
   if (RELAY_URL) {
     try {
-      const statusRes = await fetch(`${RELAY_URL}/api/status`, { timeout: 3000 });
+      const statusRes = await fetch(`${RELAY_URL}/api/status`, { signal: AbortSignal.timeout(3000) });
       const statusData = await statusRes.json();
       checks.relayStatus = statusData;
     } catch (e) {
@@ -1154,7 +1190,7 @@ app.get('/api/debug/on-air', authMiddleware, async (req, res) => {
     }
 
     try {
-      const destRes = await fetch(`${RELAY_URL}/api/destinations`, { timeout: 3000 });
+      const destRes = await fetch(`${RELAY_URL}/api/destinations`, { signal: AbortSignal.timeout(3000) });
       const destData = await destRes.json();
       checks.relayDestinations = destData;
     } catch (e) {

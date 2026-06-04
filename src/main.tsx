@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import { AuthProvider } from './auth';
+import ErrorBoundary from './components/ErrorBoundary';
 import './auth/axios-base';
 import './styles/index.css';
 import { CONFIG } from './config';
@@ -53,15 +54,19 @@ function mount(): void {
   if (isEmbed) {
     root.render(
       <React.StrictMode>
-        <App />
+        <ErrorBoundary>
+          <App />
+        </ErrorBoundary>
       </React.StrictMode>
     );
   } else {
     root.render(
       <React.StrictMode>
-        <AuthProvider>
-          <App />
-        </AuthProvider>
+        <ErrorBoundary>
+          <AuthProvider>
+            <App />
+          </AuthProvider>
+        </ErrorBoundary>
       </React.StrictMode>
     );
   }
