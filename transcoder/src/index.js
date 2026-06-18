@@ -3,6 +3,7 @@ import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3
 import { Pool } from 'pg';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -24,7 +25,12 @@ console.log('==> AWS_ACCESS_KEY_ID:', process.env.AWS_ACCESS_KEY_ID ? 'set' : 'M
 const isLocalDb = (process.env.DATABASE_URL || '').includes('localhost') || (process.env.DATABASE_URL || '').includes('127.0.0.1');
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ...(isLocalDb ? {} : { ssl: { rejectUnauthorized: process.env.NODE_ENV === 'production' } }),
+  // Railway Postgres uses self-signed certs — require SSL but don't verify the chain.
+  // (Previously this was `=== 'production'`, which rejected Railway's cert in prod.)
+  ...(isLocalDb ? {} : { ssl: { rejectUnauthorized: false } }),
+  max: 5,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000,
 });
 const s3 = new S3Client({ region: process.env.AWS_REGION });
 const BUCKET = process.env.S3_BUCKET_UPLOADS;
@@ -36,16 +42,39 @@ const VBIT = process.env.VIDEO_BITRATE || '2500k';
 const ABIT = process.env.AUDIO_BITRATE || '160k';
 const PRESET = process.env.PRESET || 'ultrafast';
 
+// Job-lifecycle tuning
+const MAX_ATTEMPTS = parseInt(process.env.MAX_NORMALIZE_ATTEMPTS || '5', 10); // give up after N tries
+const RETRY_BACKOFF_MIN = parseInt(process.env.RETRY_BACKOFF_MINUTES || '1', 10); // wait before retrying a failed job
+const STUCK_JOB_MIN = parseInt(process.env.STUCK_JOB_MINUTES || '15', 10); // reclaim 'processing' jobs orphaned by a dead worker
+
+// Tracks the in-flight ffmpeg child so SIGTERM can kill it instead of orphaning it.
+let currentChild = null;
+let shuttingDown = false;
+
 console.log('==> Config: Resolution:', `${TARGET_W}x${TARGET_H}`, 'FPS:', FPS, 'GOP:', GOP, 'Bitrate:', VBIT, 'Preset:', PRESET);
+console.log('==> Job tuning: maxAttempts:', MAX_ATTEMPTS, 'retryBackoffMin:', RETRY_BACKOFF_MIN, 'stuckJobMin:', STUCK_JOB_MIN);
 
 async function nextJob() {
-  const { rows } = await pool.query(`
-    update normalize_jobs set status='processing', attempts=attempts+1, updated_at=now()
-    where id in (
-      select id from normalize_jobs where status in ('pending','failed') order by created_at asc limit 1
-    )
-    returning id, asset_id, attempts
-  `);
+  // Atomic claim: the subselect locks exactly one eligible row with FOR UPDATE SKIP
+  // LOCKED so concurrent transcoders never grab the same job (no double-encode).
+  // Eligible = pending, OR failed-but-under-the-retry-cap after a backoff window, OR
+  // stuck in 'processing' past STUCK_JOB_MIN (a previous worker died mid-job) and
+  // still under the cap. Anything that hit MAX_ATTEMPTS stays failed for good.
+  const { rows } = await pool.query(
+    `update normalize_jobs
+        set status='processing', attempts=attempts+1, updated_at=now()
+      where id = (
+        select id from normalize_jobs
+         where status='pending'
+            or (status='failed'     and attempts < $1 and updated_at < now() - make_interval(mins => $2))
+            or (status='processing' and attempts < $1 and updated_at < now() - make_interval(mins => $3))
+         order by created_at asc
+         limit 1
+         for update skip locked
+      )
+      returning id, asset_id, attempts`,
+    [MAX_ATTEMPTS, RETRY_BACKOFF_MIN, STUCK_JOB_MIN]
+  );
   return rows[0] || null;
 }
 
@@ -138,13 +167,20 @@ async function normalize(inPath) {
 
   await new Promise((resolve, reject) => {
     const p = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    currentChild = p;
+    // Keep only the tail of stderr — a long transcode can emit many MB of logs.
     let stderr = '';
-    p.stderr.on('data', (d) => { stderr += d.toString(); });
-    p.on('error', reject);
-    p.on('exit', (code) => {
+    const STDERR_CAP = 32 * 1024;
+    p.stderr.on('data', (d) => {
+      stderr += d.toString();
+      if (stderr.length > STDERR_CAP) stderr = stderr.slice(-STDERR_CAP);
+    });
+    p.on('error', (err) => { currentChild = null; reject(err); });
+    p.on('exit', (code, signal) => {
+      currentChild = null;
       if (code !== 0) {
         console.error('==> ffmpeg stderr:', stderr);
-        reject(new Error('ffmpeg exit ' + code));
+        reject(new Error(`ffmpeg exit ${code}${signal ? ` (signal ${signal})` : ''}`));
       } else {
         if (stderr) console.log('==> ffmpeg warnings:', stderr);
         resolve();
@@ -156,8 +192,16 @@ async function normalize(inPath) {
 
 async function uploadNorm(assetId, filePath) {
   const key = `normalized/${assetId}.mp4`;
-  const body = await fs.readFile(filePath);
-  await s3.send(new PutObjectCommand({ Bucket: BUCKET, Key: key, Body: body, ContentType: 'video/mp4' }));
+  // Stream from disk with a known ContentLength instead of fs.readFile, so a large
+  // normalized file isn't loaded entirely into memory (was an OOM risk on Railway).
+  const { size } = await fs.stat(filePath);
+  await s3.send(new PutObjectCommand({
+    Bucket: BUCKET,
+    Key: key,
+    Body: createReadStream(filePath),
+    ContentLength: size,
+    ContentType: 'video/mp4',
+  }));
   await pool.query(
     `update assets set s3_key_norm=$2, norm_status=$3, norm_error=null, norm_width=$4, norm_height=$5, norm_fps=$6, norm_bitrate=$7 where id=$1`,
     [assetId, key, 'ready', TARGET_W, TARGET_H, FPS, parseInt(VBIT.replace('k', ''), 10)]
@@ -177,14 +221,17 @@ async function doneJob(jobId) {
 async function loop() {
   console.log('==> Worker loop starting, polling for jobs...');
   let pollCount = 0;
-  while (true) {
+  while (!shuttingDown) {
+    let job = null;
+    let src = null;
+    let out = null;
     try {
       pollCount++;
       lastPollAt = Date.now();
       if (pollCount % 10 === 1) {
         console.log(`==> Poll #${pollCount}: Checking for pending jobs...`);
       }
-      const job = await nextJob();
+      job = await nextJob();
       if (!job) {
         // No job found — backoff: 2s initially, up to 10s after 10 empty polls
         if (pollCount === 1) {
@@ -194,31 +241,40 @@ async function loop() {
         await new Promise(r => setTimeout(r, idleDelay));
         continue;
       }
-      console.log(`==> Processing job ${job.id} for asset ${job.asset_id} (attempt ${job.attempts})`);
+      console.log(`==> Processing job ${job.id} for asset ${job.asset_id} (attempt ${job.attempts}/${MAX_ATTEMPTS})`);
       const asset = await getAsset(job.asset_id);
       if (!asset || !asset.s3_key) {
         console.log(`==> Asset ${job.asset_id} not found or missing s3_key, marking job done`);
         await doneJob(job.id);
+        job = null; // handled — don't fail it in catch
         continue;
       }
       console.log(`==> Downloading ${asset.s3_key}...`);
       await pool.query('update assets set norm_status=$2 where id=$1', [job.asset_id, 'processing']);
-      const src = await downloadToTmp(asset.s3_key);
+      src = await downloadToTmp(asset.s3_key);
       console.log(`==> Normalizing to ${TARGET_W}x${TARGET_H} @ ${FPS}fps...`);
-      const out = await normalize(src);
+      out = await normalize(src);
       console.log(`==> Uploading normalized file...`);
       await uploadNorm(job.asset_id, out);
       await doneJob(job.id);
       console.log(`==> Job ${job.id} completed successfully!`);
-      try { await fs.unlink(src); } catch {}
-      try { await fs.unlink(out); } catch {}
       pollCount = 0; // Reset after successful job
     } catch (e) {
-      console.error('==> Transcoder error:', e.message);
-      console.error('==> Full error:', e);
+      console.error('==> Transcoder error:', e?.message || e);
+      // Record the failure so the job doesn't sit in 'processing' forever. nextJob
+      // will retry it (after backoff) until MAX_ATTEMPTS, then leave it failed.
+      if (job) {
+        try { await failJob(job.id, job.asset_id, e); }
+        catch (fe) { console.error('==> Failed to record job failure:', fe?.message || fe); }
+      }
       await new Promise(r => setTimeout(r, 2000));
+    } finally {
+      // Always clean up temp files, even on failure, so /tmp can't fill and crash-loop.
+      if (src) { try { await fs.unlink(src); } catch {} }
+      if (out) { try { await fs.unlink(out); } catch {} }
     }
   }
+  console.log('==> Worker loop stopped (shutting down)');
 }
 
 // Health check endpoint
@@ -238,19 +294,23 @@ const healthServer = http.createServer((req, res) => {
 });
 healthServer.listen(healthPort, () => console.log(`==> Transcoder health on :${healthPort}`));
 
-// Graceful shutdown
-process.on('SIGTERM', async () => {
-  console.log('\n==> Received SIGTERM, shutting down...');
+// Graceful shutdown — stop claiming new jobs, kill any in-flight ffmpeg (so it isn't
+// orphaned), then close resources. The current job, if interrupted, is left in
+// 'processing' and will be reclaimed by the stuck-job reaper on the next worker.
+async function shutdown(signal) {
+  console.log(`\n==> Received ${signal}, shutting down...`);
+  shuttingDown = true;
+  if (currentChild) {
+    try { currentChild.kill('SIGTERM'); } catch {}
+    // Escalate if ffmpeg doesn't exit promptly.
+    setTimeout(() => { try { currentChild?.kill('SIGKILL'); } catch {} }, 5000).unref();
+  }
   try { await pool.end(); } catch {}
-  healthServer.close();
-  process.exit(0);
-});
-process.on('SIGINT', async () => {
-  console.log('\n==> Received SIGINT, shutting down...');
-  try { await pool.end(); } catch {}
-  healthServer.close();
-  process.exit(0);
-});
+  try { healthServer.close(); } catch {}
+  setTimeout(() => process.exit(0), 6000).unref();
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
 console.log('==> Starting worker loop...');
 loop();
