@@ -11,6 +11,8 @@
       "HEAD"
     ],
     "AllowedOrigins": [
+      "https://broadcaster.ralph.world",
+      "https://app.ralph.world",
       "https://ralphtv-production.up.railway.app",
       "http://localhost:5173",
       "http://localhost:3000"

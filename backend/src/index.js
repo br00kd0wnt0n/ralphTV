@@ -46,7 +46,16 @@ const pool = new Pool({
 // S3 client if env present
 const hasS3 = !!(process.env.AWS_REGION && process.env.S3_BUCKET_UPLOADS);
 const s3 = hasS3
-  ? new S3Client({ region: process.env.AWS_REGION })
+  ? new S3Client({
+      region: process.env.AWS_REGION,
+      // @aws-sdk/client-s3 >= 3.729 adds default CRC32 request checksums, which inject
+      // x-amz-sdk-checksum-algorithm / x-amz-checksum-* into presigned PUT/UploadPart
+      // URLs. In the browser that forces a CORS preflight and a checksum the browser
+      // can't satisfy, breaking uploads. Only add checksums when the operation requires
+      // them, so presigned URLs stay clean. (We install ^3.637.0 with no lockfile, so a
+      // rebuild silently pulled a newer SDK with this behavior.)
+      requestChecksumCalculation: 'WHEN_REQUIRED',
+    })
   : null;
 
 const JWT_SECRET = process.env.JWT_SECRET;
