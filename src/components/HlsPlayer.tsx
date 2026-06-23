@@ -342,22 +342,20 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
           ref={videoRef}
           muted={muted}
           playsInline
+          title={muted ? 'Click for sound' : 'Click to mute'}
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}
-          style={{ opacity: (relayAvailable && streaming && playerStatus !== 'error') ? 1 : 0, transition: 'opacity 240ms ease' }}
+          style={{ opacity: (relayAvailable && streaming && playerStatus !== 'error') ? 1 : 0, transition: 'opacity 240ms ease', cursor: 'pointer' }}
           onClick={(e) => {
-            // Allow click to play if autoplay was blocked or video is paused
+            // Live preview: a click toggles SOUND (browsers require a user gesture to
+            // unmute autoplayed video). Pausing a live stream is pointless, so we don't.
             const video = e.currentTarget;
-            setError(null); // Clear any error messages
-            if (video.paused && streaming) {
-              video.play().then(() => {
-                setIsPlaying(true);
-              }).catch((err) => {
-                // Manual play failed
-              });
-            } else if (!video.paused && streaming) {
-              // If video is playing, clicking pauses it
-              video.pause();
+            setError(null);
+            const nextMuted = !video.muted;
+            video.muted = nextMuted;
+            setMuted(nextMuted);
+            if (!nextMuted && video.paused && streaming) {
+              video.play().catch(() => {});
             }
           }}
         />
@@ -368,6 +366,18 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
           className="hls-fallback-overlay"
           style={{ opacity: (!relayAvailable || !streaming || playerStatus === 'error') ? 1 : 0 }}
         />
+        {/* Muted-autoplay hint — click the video to enable sound */}
+        {relayAvailable && streaming && muted && playerStatus !== 'error' && (
+          <div
+            style={{
+              position: 'absolute', bottom: 8, left: 8, padding: '4px 10px', borderRadius: 6,
+              background: 'rgba(0,0,0,0.65)', color: '#fff', fontSize: 11, fontWeight: 600,
+              pointerEvents: 'none', display: 'flex', alignItems: 'center', gap: 6,
+            }}
+          >
+            🔇 Click for sound
+          </div>
+        )}
       </div>
 
       {relayAvailable && streaming && !isPlaying && !statusMessage && (
