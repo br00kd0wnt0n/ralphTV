@@ -151,16 +151,14 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
     if (Hls.isSupported()) {
       const hls = new Hls({
         enableWorker: true,
-        lowLatencyMode: true,
-        // Reduced buffer settings for faster startup
+        // The relay is plain HLS (not LL-HLS); low-latency mode chases the live edge and
+        // rebuffers against a real-time encode. Sit a few segments back for stable play.
+        lowLatencyMode: false,
         backBufferLength: 30,
-        maxBufferLength: 10,
-        maxMaxBufferLength: 20,
-        maxLoadingDelay: 2,
-        maxBufferingDelay: 3,
-        // Live stream specific settings
-        liveSyncDurationCount: 3,
-        liveMaxLatencyDurationCount: 10,
+        maxBufferLength: 30,
+        maxMaxBufferLength: 60,
+        liveSyncDurationCount: 4,
+        liveMaxLatencyDurationCount: 12,
       });
 
       hlsRef.current = hls;
@@ -254,19 +252,12 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
         });
       });
 
-      hls.on(Hls.Events.FRAG_LOADING, () => {
-        if (playerStatus !== 'playing') {
-          setPlayerStatus('buffering');
-          setStatusMessage('Buffering...');
-        }
-      });
-
-      hls.on(Hls.Events.FRAG_LOADED, () => {
-        if (!video.paused) {
-          setPlayerStatus('playing');
-          setStatusMessage('');
-        }
-      });
+      // Drive the buffering/playing badge off real <video> events, not off every
+      // fragment load. The old FRAG_LOADING check compared a STALE playerStatus and
+      // flashed "Buffering…" on every 1s segment even during smooth playback. Property
+      // assignment (onX) replaces rather than stacks listeners across re-inits.
+      video.onwaiting = () => { setPlayerStatus('buffering'); setStatusMessage('Buffering…'); };
+      video.onplaying = () => { setPlayerStatus('playing'); setStatusMessage(''); };
 
       hls.loadSource(streamUrl);
       hls.attachMedia(video);
@@ -305,6 +296,7 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
     return () => {
       cancelled = true; // stop the manifest-wait loop when the stream goes offline
       isInitializingRef.current = false;
+      if (videoRef.current) { videoRef.current.onwaiting = null; videoRef.current.onplaying = null; }
       if (retryTimeoutRef.current) {
         clearTimeout(retryTimeoutRef.current);
         retryTimeoutRef.current = null;
