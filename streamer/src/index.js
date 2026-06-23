@@ -177,24 +177,29 @@ async function cleanupStreamer() {
     KILL_TIMEOUT = null;
   }
 
-  // Kill child process with fallback to SIGKILL
-  if (CHILD) {
-    try {
-      console.log('==> Sending SIGINT to ffmpeg...');
-      CHILD.kill('SIGINT');
-
-      // Set up SIGKILL fallback after 5 seconds
-      KILL_TIMEOUT = setTimeout(() => {
-        if (CHILD) {
-          console.warn('==> ffmpeg did not exit gracefully, sending SIGKILL');
-          try { CHILD.kill('SIGKILL'); } catch (e) {
-            console.error('==> SIGKILL failed:', e);
-          }
-        }
+  // Kill the child and AWAIT its actual exit (SIGINT, then SIGKILL after 5s) before
+  // returning. Previously this scheduled the SIGKILL and returned immediately, so a
+  // caller (e.g. /control/restart) re-armed the stream while the old ffmpeg was still
+  // alive — two publishers pushing the same RTMP key → corrupt/flapping output.
+  const child = CHILD;
+  if (child && child.exitCode === null) {
+    await new Promise((resolve) => {
+      let done = false;
+      const finish = () => { if (done) return; done = true; clearTimeout(killTimer); resolve(); };
+      const killTimer = setTimeout(() => {
+        console.warn('==> ffmpeg did not exit gracefully, sending SIGKILL');
+        try { child.kill('SIGKILL'); } catch (e) { console.error('==> SIGKILL failed:', e); }
       }, 5000);
-    } catch (e) {
-      console.error('==> Failed to kill child process:', e);
-    }
+      child.once('exit', finish);
+      child.once('error', finish);
+      try {
+        console.log('==> Sending SIGINT to ffmpeg...');
+        child.kill('SIGINT');
+      } catch (e) {
+        console.error('==> Failed to kill child process:', e);
+        finish();
+      }
+    });
   }
 
   // Clean up temp files
@@ -221,7 +226,30 @@ const MIN_SEC = parseInt(process.env.STREAMER_MIN_SEC || '0', 10) || 0;
 const CONTINUOUS = (process.env.STREAMER_CONTINUOUS === 'true');
 const CONTINUOUS_LOOPS = parseInt(process.env.STREAMER_CONTINUOUS_LOOPS || '3', 10) || 3;
 
+// SSRF / arbitrary-input guard. Media inputs reach ffmpeg's `-i`, which honors
+// file://, concat:, pipe:, http(s), etc. Only allow https media from non-internal
+// hosts, or streamer-controlled local temp files. Throwing here makes the caller skip
+// the item rather than letting ffmpeg read /etc/passwd or hit 169.254.169.254.
+function assertSafeMediaInput(input) {
+  if (typeof input !== 'string' || !input) throw new Error('empty media input');
+  const scheme = (input.match(/^([a-zA-Z][a-zA-Z0-9+.-]*):/) || [])[1];
+  if (scheme) {
+    if (scheme.toLowerCase() !== 'https') throw new Error(`refusing media scheme: ${scheme}`);
+    const host = new URL(input).hostname;
+    if (
+      host === 'localhost' || host === '169.254.169.254' ||
+      /\.(internal|local)$/i.test(host) || host.endsWith('.railway.internal') ||
+      /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host)
+    ) throw new Error(`refusing internal media host: ${host}`);
+    return;
+  }
+  // No scheme → must be a streamer-controlled local file.
+  if (input.startsWith(os.tmpdir()) || input.startsWith('/app/')) return;
+  throw new Error(`refusing local media path outside temp: ${input}`);
+}
+
 async function streamOnce(url, offsetSec, useCopyMode = false) {
+  assertSafeMediaInput(url);
   // Download remote to a local temp file for stable decoding
   let localPath = url;
   let downloaded = false;
@@ -267,21 +295,40 @@ async function streamOnce(url, offsetSec, useCopyMode = false) {
   });
 }
 
+const DOWNLOAD_TIMEOUT_MS = parseInt(process.env.STREAMER_DOWNLOAD_TIMEOUT_MS || '120000', 10);
+const MAX_DOWNLOAD_BYTES = parseInt(process.env.STREAMER_MAX_DOWNLOAD_MB || '4096', 10) * 1024 * 1024;
+
 async function downloadToTemp(url, ix) {
+  assertSafeMediaInput(url);
   const tmp = path.join(os.tmpdir(), `ralphtv_${Date.now()}_${ix}.mp4`);
-  const res = await fetch(url);
-  if (!res.ok || !res.body) throw new Error(`download failed ${res.status}`);
-  const file = await fs.open(tmp, 'w');
-  const writer = file.createWriteStream();
-  await new Promise((resolve, reject) => {
-    res.body.pipeTo(new WritableStream({
-      write(chunk) { writer.write(Buffer.from(chunk)); },
-      close() { writer.end(() => resolve()); },
-      abort(err) { writer.destroy(err); reject(err); }
-    })).catch(reject);
-  });
-  await file.close();
-  return tmp;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok || !res.body) throw new Error(`download failed ${res.status}`);
+    const file = await fs.open(tmp, 'w');
+    const writer = file.createWriteStream();
+    let bytes = 0;
+    await new Promise((resolve, reject) => {
+      res.body.pipeTo(new WritableStream({
+        write(chunk) {
+          bytes += chunk.byteLength || chunk.length || 0;
+          if (bytes > MAX_DOWNLOAD_BYTES) { reject(new Error('download exceeds size cap')); return; }
+          writer.write(Buffer.from(chunk));
+        },
+        close() { writer.end(() => resolve()); },
+        abort(err) { writer.destroy(err); reject(err); }
+      })).catch(reject);
+    });
+    await file.close();
+    return tmp;
+  } catch (e) {
+    clearTimeout(timer);
+    try { await fs.unlink(tmp); } catch {} // don't leak a partial/aborted download
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function normalizeToTemp(inPath, ix) {
@@ -769,6 +816,7 @@ async function main() {
 
   // Loop forever
   // At start of each cycle, compute pointer and decide list
+  let errCount = 0;
   for (;;) {
     try {
       if (!RUNNING) { await sleep(1000); continue; }
@@ -912,9 +960,14 @@ async function main() {
         }
       }
       CURRENT = null;
+      errCount = 0; // clean cycle — reset backoff
     } catch (e) {
-      console.error('Streamer error', e);
-      await sleep(5000);
+      // Exponential backoff (5s→60s) so an unreachable backend/relay isn't hammered
+      // every 5s indefinitely.
+      errCount++;
+      const backoff = Math.min(5000 * Math.pow(2, errCount - 1), 60000);
+      console.error(`Streamer error (retry in ${Math.round(backoff / 1000)}s)`, e);
+      await sleep(backoff);
     }
   }
 }
@@ -937,6 +990,10 @@ process.on('SIGTERM', async () => {
 process.on('uncaughtException', async (err) => {
   console.error('==> Uncaught exception:', err);
   RUNNING = false;
+  // Synchronous best-effort kill first — after an uncaught error the event loop may be
+  // unreliable, so don't depend solely on the async cleanup to reap ffmpeg before exit
+  // (an orphaned ffmpeg keeps pushing RTMP after the container restarts).
+  if (CHILD) { try { CHILD.kill('SIGKILL'); } catch {} }
   await cleanupStreamer();
   process.exit(1);
 });
