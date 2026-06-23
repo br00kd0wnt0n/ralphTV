@@ -116,42 +116,32 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
     setPlayerStatus('initializing');
     setStatusMessage('Waiting for HLS segments...');
     const streamUrl = `${CONFIG.RELAY_BASE_URL}/hls/stream.m3u8`;
+    let cancelled = false;
 
-    // Wait for HLS manifest to be available before initializing player
-    // Stream needs time to generate first segments (typically 2-5 seconds)
+    // Wait — for as long as the stream is meant to be live — for the manifest to appear.
+    // After Start the relay can take several seconds to produce its first segment;
+    // giving up after ~5s (the old behavior) is exactly why the preview only came up
+    // after a manual page refresh. The effect cleanup sets `cancelled`, so this stops
+    // immediately when the stream goes offline (streaming → false).
     const checkHlsAvailability = async () => {
-      let attempts = 0;
-      const maxAttempts = 10;
-
-      while (attempts < maxAttempts) {
+      while (!cancelled) {
         try {
-          // Use GET instead of HEAD since relay may return 200 for HEAD even when file doesn't exist
-          const response = await fetch(streamUrl, { method: 'GET' });
+          const response = await fetch(streamUrl, { method: 'GET', cache: 'no-store' });
           if (response.ok) {
-            // Verify we actually got manifest content (should start with #EXTM3U)
             const text = await response.text();
-            if (text.includes('#EXTM3U')) {
-              return true;
-            } else {
-            }
+            if (text.includes('#EXTM3U')) return true;
           }
-        } catch (error) {
-          // Manifest not ready yet
-        }
-        attempts++;
-        await new Promise(resolve => setTimeout(resolve, 500));
-        setStatusMessage(`Waiting for HLS segments... (${attempts}/${maxAttempts})`);
+        } catch (error) { /* manifest not ready yet */ }
+        setStatusMessage('Waiting for stream…');
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
-
       return false;
     };
 
-    // Check availability then initialize player
+    // Initialize the player once the manifest is actually available.
     checkHlsAvailability().then((available) => {
-      if (!available) {
+      if (cancelled || !available) {
         isInitializingRef.current = false;
-        setPlayerStatus('error');
-        setStatusMessage('HLS manifest not available');
         return;
       }
 
@@ -313,6 +303,7 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
 
     // Cleanup function
     return () => {
+      cancelled = true; // stop the manifest-wait loop when the stream goes offline
       isInitializingRef.current = false;
       if (retryTimeoutRef.current) {
         clearTimeout(retryTimeoutRef.current);
