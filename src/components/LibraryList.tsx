@@ -8,12 +8,14 @@ export default function LibraryList({
   onChangeCategory,
   onChangeName,
   onDelete,
+  onSelect,
 }: {
   assets: Asset[];
   categories: Category[];
   onChangeCategory: (assetId: string, categoryId: string | undefined) => void;
   onChangeName?: (assetId: string, name: string) => void;
   onDelete?: (assetId: string) => void;
+  onSelect?: (assetId: string) => void;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -74,9 +76,10 @@ export default function LibraryList({
                 />
               ) : (
                 <div
-                  onClick={() => isReady && handleStartEdit(asset)}
-                  style={{ cursor: isReady ? 'text' : 'not-allowed', marginBottom: 6 }}
-                  title={isReady ? "Click to edit name" : "Cannot edit while transcoding"}
+                  onClick={() => onSelect?.(asset.id)}
+                  onDoubleClick={() => isReady && handleStartEdit(asset)}
+                  style={{ cursor: 'pointer', marginBottom: 6 }}
+                  title="Click to preview · double-click to rename"
                 >
                   {asset.name}{statusText}
                 </div>

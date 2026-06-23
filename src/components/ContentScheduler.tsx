@@ -326,6 +326,7 @@ export default function ContentScheduler() {
             categories={categories}
             setAssets={setAssets}
             onAssetUploaded={handleAssetUploaded}
+            onSelect={(id) => setSelectedAssetId(id)}
           />
 
           {/* Schedule Grid - full width */}

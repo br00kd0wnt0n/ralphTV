@@ -26,11 +26,13 @@ export default function LibraryPanel({
   categories,
   setAssets,
   onAssetUploaded,
+  onSelect,
 }: {
   assets: Asset[];
   categories: Category[];
   setAssets: (updater: (prev: Asset[]) => Asset[]) => void;
   onAssetUploaded: (asset: Asset) => void;
+  onSelect?: (assetId: string) => void;
 }) {
   const apiEnabled = !!CONFIG.API_BASE_URL;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -224,6 +226,7 @@ export default function LibraryPanel({
               <LibraryList
                 assets={filteredAssets}
                 categories={categories}
+                onSelect={onSelect}
                 onChangeCategory={(assetId, categoryId) => {
                   setAssets((prev) => prev.map((a) => (a.id === assetId ? { ...a, categoryId } : a)));
                   if (apiEnabled) setAssetCategory({ assetId, categoryId }).catch(() => {});
