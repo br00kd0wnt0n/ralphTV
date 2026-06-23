@@ -142,8 +142,24 @@ function authMiddleware(req, res, next) {
     // Pin the algorithm so a token can't downgrade to alg:none / RS256 confusion.
     const decoded = jwt.verify(bearer, _JWT_SECRET, { algorithms: ['HS256'] });
     req.user = decoded;
+    // Diagnostic: warn when a request rides in on a near-dead token — this is what a
+    // long upload finishing just after its token expires looks like just before it fails.
+    if (decoded.exp) {
+      const remaining = decoded.exp - Math.floor(Date.now() / 1000);
+      if (remaining < 600) {
+        const lifespan = decoded.iat ? decoded.exp - decoded.iat : '?';
+        console.warn(`[auth] near-expiry token remaining=${remaining}s lifespan=${lifespan}s iss=${decoded.iss || '?'} user=${decoded.email || decoded.userId || '?'} ${req.method} ${req.path}`);
+      }
+    }
     next();
   } catch (e) {
+    // Make auth failures visible (they were silent before). TokenExpiredError carries
+    // the exact expiry time — the smoking gun for "upload hangs at 100% then logout".
+    if (e?.name === 'TokenExpiredError') {
+      console.warn(`[auth] 401 token EXPIRED expiredAt=${e.expiredAt?.toISOString?.() || e.expiredAt} ${req.method} ${req.path}`);
+    } else {
+      console.warn(`[auth] 401 ${e?.name || 'verify failed'}: ${e?.message || ''} ${req.method} ${req.path}`);
+    }
     return res.status(401).json({ message: 'Unauthorized' });
   }
 }
@@ -185,6 +201,14 @@ app.post('/api/login', loginLimiter, async (req, res) => {
 });
 
 app.get('/api/protected', authMiddleware, (req, res) => {
+  // The SSO bridge hits this right after a CMS login, so it's the cleanest place to
+  // surface the CMS-issued token's lifetime — confirms (or rules out) a short TTL.
+  const u = req.user || {};
+  if (u.exp) {
+    const now = Math.floor(Date.now() / 1000);
+    const lifespan = u.iat ? u.exp - u.iat : '?';
+    console.log(`[auth] protected check: lifespan=${lifespan}s remaining=${u.exp - now}s iss=${u.iss || '?'} role=${u.role ?? 'none'} user=${u.email || u.userId || '?'}`);
+  }
   return res.json({ message: 'Access granted', user: req.user });
 });
 
