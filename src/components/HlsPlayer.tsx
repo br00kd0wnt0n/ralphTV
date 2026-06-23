@@ -58,6 +58,7 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
     }
 
     const checkStatus = async () => {
+      if (typeof document !== 'undefined' && document.hidden) return; // skip while tab is backgrounded
       try {
         const status = await getRelayStatus();
         if (!status.available) {

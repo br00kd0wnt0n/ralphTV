@@ -43,7 +43,7 @@ export default function PlayheadIndicator({
                 offsetSec = Math.max(0, Math.floor(elapsed / 1000));
 
                 // Cap at asset duration to prevent overflow
-                const asset = assetMap.get(currentAssetId);
+                const asset = currentAssetId ? assetMap.get(currentAssetId) : undefined;
                 if (asset?.durationSec) {
                   offsetSec = Math.min(offsetSec, asset.durationSec);
                 }

@@ -54,6 +54,7 @@ export default function LibraryPanel({
           });
           const objectUrl = URL.createObjectURL(file);
           const duration = await probeDuration(objectUrl, detectType(file.type));
+          URL.revokeObjectURL(objectUrl); // free the blob immediately; preview loads via the S3 read URL
           await completeUpload({ fileId: init.fileId, s3Key: init.s3Key, fileName: file.name, mimeType: file.type, size: file.size, ...(duration ? { durationSec: duration } : {}) });
           const assetType = detectType(file.type);
           const asset: Asset = {
@@ -61,7 +62,7 @@ export default function LibraryPanel({
             fileId: init.fileId,
             name: file.name,
             type: assetType,
-            url: objectUrl,
+            url: '',
             mimeType: file.type,
             size: file.size,
             s3Key: init.s3Key,
@@ -96,6 +97,7 @@ export default function LibraryPanel({
           }
           const objectUrl = URL.createObjectURL(file);
           const duration = await probeDuration(objectUrl, detectType(file.type));
+          URL.revokeObjectURL(objectUrl); // free the blob immediately; preview loads via the S3 read URL
           await completeUpload({ fileId: init.fileId, uploadId: init.uploadId, parts: partsMeta, s3Key: init.s3Key, fileName: file.name, mimeType: file.type, size: file.size, ...(duration ? { durationSec: duration } : {}) });
           const assetType = detectType(file.type);
           const asset: Asset = {
@@ -103,7 +105,7 @@ export default function LibraryPanel({
             fileId: init.fileId,
             name: file.name,
             type: assetType,
-            url: objectUrl,
+            url: '',
             mimeType: file.type,
             size: file.size,
             s3Key: init.s3Key,

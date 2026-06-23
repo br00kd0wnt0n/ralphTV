@@ -110,12 +110,7 @@ export async function uploadMultipart(file: File, partUrls: { partNumber: number
     const end = i === partUrls.length - 1 ? total : Math.floor(((i + 1) / partUrls.length) * total);
     const blob = file.slice(start, end);
     const etag = await putPart(url, blob, (inc) => {
-      // inc is loaded within this part; approximate aggregate
-      const base = Math.floor((i / partUrls.length) * total);
-      const current = Math.min(base + inc, end);
-      const gross = (start + inc) - start; // bytes within this part
-      const tentativeUploaded = Math.min(uploaded + (gross - 0), total);
-      const pct = Math.max(0, Math.min(100, Math.round(((uploaded + gross) / total) * 100)));
+      const pct = Math.max(0, Math.min(100, Math.round(((uploaded + inc) / total) * 100)));
       onProgress?.(pct);
     });
     uploaded += blob.size;
@@ -152,11 +147,22 @@ export async function uploadMultipartWithSigner(
     const start = Math.floor((i / partsCount) * total);
     const end = i === partsCount - 1 ? total : Math.floor(((i + 1) / partsCount) * total);
     const blob = file.slice(start, end);
-    const url = await signer(partNumber);
-    const etag = await putPart(url, blob, (inc) => {
-      const pct = Math.max(0, Math.min(100, Math.round(((uploaded + inc) / total) * 100)));
-      onProgress?.(pct);
-    });
+    // Retry each part on transient failure (network blip or an expired presign URL),
+    // re-signing on every attempt so a 10-min TTL can't fail a long upload.
+    let etag = '';
+    for (let attempt = 1; ; attempt++) {
+      try {
+        const url = await signer(partNumber);
+        etag = await putPart(url, blob, (inc) => {
+          const pct = Math.max(0, Math.min(100, Math.round(((uploaded + inc) / total) * 100)));
+          onProgress?.(pct);
+        });
+        break;
+      } catch (err) {
+        if (attempt >= 4) throw err;
+        await new Promise(r => setTimeout(r, 1000 * attempt));
+      }
+    }
     uploaded += blob.size;
     parts.push({ partNumber, etag });
     onProgress?.(Math.round((uploaded / total) * 100));

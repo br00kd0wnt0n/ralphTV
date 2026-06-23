@@ -31,6 +31,7 @@ export function useHls(video: HTMLVideoElement | null, opts: UseHlsOpts = {}) {
     if (!enabled) return;
     let mounted = true;
     const tick = async () => {
+      if (typeof document !== 'undefined' && document.hidden) return; // skip while tab is backgrounded
       try {
         let backendLive: boolean | null = null;
         if (CONFIG.API_BASE_URL) {

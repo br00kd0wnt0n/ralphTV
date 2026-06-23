@@ -88,32 +88,36 @@ export default function ContentScheduler() {
           try {
             const assetRes = await listAssets();
             if (Array.isArray(assetRes.assets)) {
-              const byId = new Map(assets.map(a => [a.id, a]));
-              const merged: Asset[] = [];
-              for (const a of assetRes.assets) {
-                const existing = byId.get(a.id);
-                const type = (a.file_type === 'video' || a.file_type === 'audio') ? a.file_type : 'unknown';
-                const mapped: Asset = {
-                  id: a.id,
-                  name: existing?.name || a.file_name,
-                  type,
-                  url: existing?.url || '',
-                  mimeType: a.mime_type,
-                  size: Number(a.size),
-                  s3Key: a.s3_key,
-                  uploadedAt: a.uploaded_at,
-                  tags: Array.isArray(a.tags) ? a.tags : [],
-                  vimeoReference: a.vimeo_reference || undefined,
-                  durationSec: typeof a.duration_sec === 'number' ? a.duration_sec : existing?.durationSec,
-                  categoryId: a.category_id || existing?.categoryId,
-                  normStatus: a.norm_status || existing?.normStatus,
-                };
-                merged.push(mapped);
-                byId.delete(a.id);
-              }
-              // keep local-only assets (with object URLs)
-              for (const rest of byId.values()) merged.push(rest);
-              setAssets(merged);
+              // Functional update so the merge sees the CURRENT assets (incl. any loaded
+              // from cache or uploaded during this async load), not the stale [] closure.
+              setAssets(prev => {
+                const byId = new Map(prev.map(a => [a.id, a]));
+                const merged: Asset[] = [];
+                for (const a of assetRes.assets) {
+                  const existing = byId.get(a.id);
+                  const type = (a.file_type === 'video' || a.file_type === 'audio') ? a.file_type : 'unknown';
+                  const mapped: Asset = {
+                    id: a.id,
+                    name: existing?.name || a.file_name,
+                    type,
+                    url: existing?.url || '',
+                    mimeType: a.mime_type,
+                    size: Number(a.size),
+                    s3Key: a.s3_key,
+                    uploadedAt: a.uploaded_at,
+                    tags: Array.isArray(a.tags) ? a.tags : [],
+                    vimeoReference: a.vimeo_reference || undefined,
+                    durationSec: typeof a.duration_sec === 'number' ? a.duration_sec : existing?.durationSec,
+                    categoryId: a.category_id || existing?.categoryId,
+                    normStatus: a.norm_status || existing?.normStatus,
+                  };
+                  merged.push(mapped);
+                  byId.delete(a.id);
+                }
+                // keep local-only assets (just uploaded, not yet in the backend list)
+                for (const rest of byId.values()) merged.push(rest);
+                return merged;
+              });
             }
           } catch {}
           return;
@@ -147,6 +151,7 @@ export default function ContentScheduler() {
     if (!anyNormalizing || !CONFIG.USE_BACKEND_SCHEDULE || !CONFIG.API_BASE_URL) return;
     let active = true;
     const tick = async () => {
+      if (typeof document !== 'undefined' && document.hidden) return; // skip while tab is backgrounded
       try {
         const res = await listAssets();
         if (!active || !Array.isArray(res.assets)) return;

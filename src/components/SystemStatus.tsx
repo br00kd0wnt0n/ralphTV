@@ -30,6 +30,7 @@ export default function SystemStatus() {
         return;
       }
 
+      if (typeof document !== 'undefined' && document.hidden) return; // skip while tab is backgrounded
       try {
         const response = await fetch(`${CONFIG.API_BASE_URL}/api/system/status`);
         if (response.ok) {
