@@ -258,7 +258,11 @@ app.post('/uploads/init', authMiddleware, requireWrite, async (req, res) => {
     });
     const created = await s3.send(create);
     const uploadId = created.UploadId;
-    const parts = parseInt(process.env.MULTIPART_PARTS || '6', 10);
+    // Size each part to ~MULTIPART_PART_MB (default 100MB) instead of a fixed count, so
+    // large files don't produce parts that exceed S3's 5GB/part limit or outlive the
+    // per-part presign TTL. S3 allows at most 10000 parts.
+    const partSizeBytes = parseInt(process.env.MULTIPART_PART_MB || '100', 10) * 1024 * 1024;
+    const parts = Math.min(10000, Math.max(1, Math.ceil(size / partSizeBytes)));
     // Return part count; client will request per-part URLs via /uploads/part-url
     return res.json({ kind: 'multipart', fileId, s3Key, uploadId, parts });
   } catch (e) {
@@ -409,14 +413,22 @@ app.patch('/schedule/:channel/:week/:day', authMiddleware, requireWrite, async (
       }
       const { rows: current } = await client.query('select id, asset_id as "assetId", position from schedule_items where schedule_id=$1 order by position asc', [schedRow.id]);
       let items = current.map((r) => ({ id: r.id, assetId: r.assetId }));
+      // Validate each op before mutating — malformed indices would otherwise splice
+      // `undefined` into the list and 500 mid-transaction (insert with asset_id=undefined).
       for (const op of ops) {
         if (op.type === 'add') {
-          items.splice(op.index, 0, op.item);
+          if (!op.item || !op.item.assetId) { await client.query('rollback'); return res.status(400).json({ message: 'add op requires item.assetId' }); }
+          const idx = Number.isInteger(op.index) ? Math.max(0, Math.min(op.index, items.length)) : items.length;
+          items.splice(idx, 0, op.item);
         } else if (op.type === 'remove') {
+          if (!Number.isInteger(op.index) || op.index < 0 || op.index >= items.length) { await client.query('rollback'); return res.status(400).json({ message: 'remove op index out of range' }); }
           items.splice(op.index, 1);
         } else if (op.type === 'move') {
+          if (![op.fromIndex, op.toIndex].every(Number.isInteger) || op.fromIndex < 0 || op.fromIndex >= items.length || op.toIndex < 0 || op.toIndex > items.length) { await client.query('rollback'); return res.status(400).json({ message: 'move op index out of range' }); }
           const [m] = items.splice(op.fromIndex, 1);
           items.splice(op.toIndex, 0, m);
+        } else {
+          await client.query('rollback'); return res.status(400).json({ message: 'unknown op type' });
         }
       }
       await client.query('delete from schedule_items where schedule_id=$1', [schedRow.id]);
@@ -448,13 +460,17 @@ app.post('/assets/:id/tags', authMiddleware, requireWrite, async (req, res) => {
     const client = await pool.connect();
     try {
       await client.query('begin');
-      // Batch upsert all tags in one query
-      const tagValues = tags.map((_, i) => `(gen_random_uuid(), $${i + 1})`).join(', ');
-      const { rows: tagRows } = await client.query(
-        `insert into tags (id, name) values ${tagValues} on conflict (name) do update set name=excluded.name returning id`,
-        tags
-      );
-      const ids = tagRows.map(r => r.id);
+      // Batch upsert all tags in one query. Guard the empty case — an empty VALUES list
+      // is a SQL syntax error; clearing all tags should still delete the links below.
+      let ids = [];
+      if (tags.length) {
+        const tagValues = tags.map((_, i) => `(gen_random_uuid(), $${i + 1})`).join(', ');
+        const { rows: tagRows } = await client.query(
+          `insert into tags (id, name) values ${tagValues} on conflict (name) do update set name=excluded.name returning id`,
+          tags
+        );
+        ids = tagRows.map(r => r.id);
+      }
       await client.query('delete from asset_tags where asset_id=$1', [assetId]);
       if (ids.length) {
         const atValues = ids.map((_, i) => `($1, $${i + 2})`).join(', ');
@@ -1325,6 +1341,11 @@ wss.on('connection', (ws, req) => {
     return;
   }
 
+  // Heartbeat: mark alive on pong; the sweep below terminates sockets that stop
+  // responding (half-open TCP from sleep/NAT timeouts that never fire 'close').
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
+
   let clientTopicCount = 0;
 
   ws.on('message', (raw) => {
@@ -1349,6 +1370,21 @@ wss.on('connection', (ws, req) => {
     for (const set of subs.values()) set.delete(ws);
   });
 });
+
+// Reap dead WebSocket connections every 30s so subs/memory don't leak on half-open
+// sockets (which never emit 'close').
+const wsHeartbeat = setInterval(() => {
+  for (const ws of wss.clients) {
+    if (ws.isAlive === false) {
+      for (const set of subs.values()) set.delete(ws);
+      try { ws.terminate(); } catch {}
+      continue;
+    }
+    ws.isAlive = false;
+    try { ws.ping(); } catch {}
+  }
+}, 30000);
+wsHeartbeat.unref();
 
 function broadcast(topic, payload) {
   const set = subs.get(topic);
@@ -1393,17 +1429,24 @@ server.listen(port, async () => {
   await seedAdminUser();
 });
 
-// Graceful shutdown
+// Graceful shutdown — stop accepting new connections, let in-flight requests drain,
+// THEN end the DB pool (ending it first would 500 any request still awaiting a client).
+let shuttingDownBackend = false;
 async function shutdown(signal) {
+  if (shuttingDownBackend) return;
+  shuttingDownBackend = true;
   console.log(`\n[Shutdown] Received ${signal}, closing gracefully...`);
-  server.close(() => {
-    console.log('[Shutdown] HTTP server closed');
-  });
+  clearInterval(wsHeartbeat);
   for (const ws of wss.clients) {
     try { ws.close(1001, 'Server shutting down'); } catch {}
   }
+  // Force-exit backstop in case a request hangs.
+  const force = setTimeout(() => { console.error('[Shutdown] Forced exit'); process.exit(0); }, 10000);
+  force.unref();
+  await new Promise((resolve) => server.close(resolve)); // wait for in-flight requests
+  console.log('[Shutdown] HTTP server closed');
   try { await pool.end(); console.log('[Shutdown] Database pool closed'); } catch {}
-  setTimeout(() => process.exit(0), 5000); // Force exit after 5s
+  process.exit(0);
 }
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
