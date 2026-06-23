@@ -51,7 +51,10 @@ export default function PreviewPane({
       if (player) try { player.destroy(); } catch {}
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [asset]);
+    // Re-init only when the asset identity or its media source changes — not when an
+    // unrelated field (e.g. normStatus from the status poll) updates, which would
+    // otherwise tear down and reload the player mid-playback.
+  }, [asset?.id, asset?.url, asset?.s3Key, asset?.vimeoReference, asset?.type]);
 
   const category = categories?.find(c => c.id === asset?.categoryId);
 

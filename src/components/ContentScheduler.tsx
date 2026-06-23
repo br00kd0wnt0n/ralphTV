@@ -154,11 +154,12 @@ export default function ContentScheduler() {
         setAssets(prev => prev.map(a => {
           const fresh: any = freshById.get(a.id);
           if (!fresh) return a;
-          return {
-            ...a,
-            normStatus: fresh.norm_status ?? a.normStatus,
-            durationSec: typeof fresh.duration_sec === 'number' ? fresh.duration_sec : a.durationSec,
-          };
+          const nextNorm = fresh.norm_status ?? a.normStatus;
+          const nextDur = typeof fresh.duration_sec === 'number' ? fresh.duration_sec : a.durationSec;
+          // Preserve the object reference when nothing changed, so unrelated components
+          // (e.g. the open PreviewPane) don't re-render/reload every poll tick.
+          if (nextNorm === a.normStatus && nextDur === a.durationSec) return a;
+          return { ...a, normStatus: nextNorm, durationSec: nextDur };
         }));
       } catch {}
     };
