@@ -43,8 +43,7 @@ export default function LibraryList({
       {assets.map((asset, index) => {
         // Check if asset is ready to use
         const isReady = asset.type !== 'video' || asset.normStatus === 'ready';
-        const statusText = !isReady ?
-          (asset.normStatus === 'processing' ? ' (Transcoding...)' : ' (Pending transcode)') : '';
+        const statusText = !isReady ? ' (Transcoding...)' : '';
 
         return (
         <Draggable key={asset.id} draggableId={`asset-${asset.id}`} index={index} isDragDisabled={!isReady}>
