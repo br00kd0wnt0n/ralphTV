@@ -24,31 +24,33 @@ const app = express();
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '10mb' }));
 
-// Minimal in-memory fixed-window rate limiter (no external dependency). Keyed by IP;
-// state is per-instance and resets on restart, which is fine for brute-force defense.
-function rateLimiter({ windowMs, max, keyPrefix = 'rl' }) {
-  const hits = new Map(); // key -> { count, resetAt }
-  // Periodic sweep so the Map can't grow unbounded.
-  setInterval(() => {
-    const now = Date.now();
-    for (const [k, e] of hits) if (e.resetAt <= now) hits.delete(k);
-  }, windowMs).unref();
-  return (req, res, next) => {
-    const now = Date.now();
-    const key = `${keyPrefix}:${req.ip || 'unknown'}`;
-    let e = hits.get(key);
-    if (!e || e.resetAt <= now) { e = { count: 0, resetAt: now + windowMs }; hits.set(key, e); }
-    e.count++;
-    if (e.count > max) {
-      res.set('Retry-After', String(Math.ceil((e.resetAt - now) / 1000)));
-      return res.status(429).json({ message: 'Too many requests, please try again later' });
-    }
-    next();
-  };
+// Failed-login limiter (in-memory, no dependency). We count only FAILED attempts, so
+// legitimate logins never accrue — critically, the CMS SSO bridge logs in server-side
+// from a single shared IP every time an editor opens the Broadcaster, and must not get
+// locked out. Brute force (which fails) still trips the block after LOGIN_MAX_FAILS.
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_MAX_FAILS = parseInt(process.env.LOGIN_MAX_FAILS || '10', 10);
+const failedLogins = new Map(); // ip -> { count, resetAt }
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, e] of failedLogins) if (e.resetAt <= now) failedLogins.delete(k);
+}, LOGIN_WINDOW_MS).unref();
+function loginLimiter(req, res, next) {
+  const now = Date.now();
+  const e = failedLogins.get(req.ip || 'unknown');
+  if (e && e.resetAt > now && e.count >= LOGIN_MAX_FAILS) {
+    res.set('Retry-After', String(Math.ceil((e.resetAt - now) / 1000)));
+    return res.status(429).json({ message: 'Too many failed login attempts, please try again later' });
+  }
+  next();
 }
-
-// Strict limiter for credential auth: 10 attempts per 15 min per IP.
-const loginLimiter = rateLimiter({ windowMs: 15 * 60 * 1000, max: 10, keyPrefix: 'login' });
+function recordLoginFailure(ip) {
+  const now = Date.now();
+  const key = ip || 'unknown';
+  let e = failedLogins.get(key);
+  if (!e || e.resetAt <= now) { e = { count: 0, resetAt: now + LOGIN_WINDOW_MS }; failedLogins.set(key, e); }
+  e.count++;
+}
 
 const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || '*')
   .split(',')
@@ -192,10 +194,11 @@ app.post('/api/login', loginLimiter, async (req, res) => {
   if (!email || !password) return res.status(400).json({ message: 'Missing credentials' });
   try {
     const { rows } = await pool.query('select id, email, password_hash, role from users where email=$1', [email]);
-    if (!rows.length) return res.status(401).json({ message: 'Authentication failed' });
+    if (!rows.length) { recordLoginFailure(req.ip); return res.status(401).json({ message: 'Authentication failed' }); }
     const user = rows[0];
     const ok = await bcrypt.compare(password, user.password_hash);
-    if (!ok) return res.status(401).json({ message: 'Authentication failed' });
+    if (!ok) { recordLoginFailure(req.ip); return res.status(401).json({ message: 'Authentication failed' }); }
+    failedLogins.delete(req.ip || 'unknown'); // success clears the counter
     const token = signToken({ userId: user.id, email: user.email, role: user.role });
     return res.json({ token, user: { id: user.id, email: user.email, role: user.role } });
   } catch (e) {
