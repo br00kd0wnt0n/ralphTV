@@ -73,18 +73,10 @@ export default function LibraryPanel({
           onAssetUploaded(asset);
           setUploadItems(prev => prev.map(it => it.id === tempId ? { ...it, progress: 100, status: 'done' } : it));
 
-          // Auto-trigger normalization for videos
-          if (assetType === 'video' && apiEnabled) {
-            try {
-              const token = localStorage.getItem('token') || CONFIG.API_AUTH_TOKEN;
-              await fetch(`${CONFIG.API_BASE_URL}/admin/normalize/reprocess`, {
-                method: 'POST',
-                headers: token ? { Authorization: `Bearer ${token}` } : {},
-              });
-            } catch (err) {
-              console.warn('Failed to trigger normalization:', err);
-            }
-          }
+          // Normalization for THIS asset is already enqueued server-side by
+          // /uploads/complete. Do NOT call /admin/normalize/reprocess here — that
+          // endpoint re-normalizes the ENTIRE library, resetting every asset to
+          // 'pending' on every single upload.
         } else {
           let partsMeta;
           if (init.partUrls && init.partUrls.length) {
@@ -123,18 +115,10 @@ export default function LibraryPanel({
           onAssetUploaded(asset);
           setUploadItems(prev => prev.map(it => it.id === tempId ? { ...it, progress: 100, status: 'done' } : it));
 
-          // Auto-trigger normalization for videos
-          if (assetType === 'video' && apiEnabled) {
-            try {
-              const token = localStorage.getItem('token') || CONFIG.API_AUTH_TOKEN;
-              await fetch(`${CONFIG.API_BASE_URL}/admin/normalize/reprocess`, {
-                method: 'POST',
-                headers: token ? { Authorization: `Bearer ${token}` } : {},
-              });
-            } catch (err) {
-              console.warn('Failed to trigger normalization:', err);
-            }
-          }
+          // Normalization for THIS asset is already enqueued server-side by
+          // /uploads/complete. Do NOT call /admin/normalize/reprocess here — that
+          // endpoint re-normalizes the ENTIRE library, resetting every asset to
+          // 'pending' on every single upload.
         }
       } catch (err: any) {
         setUploadItems(prev => prev.map(it => it.id === tempId ? { ...it, status: 'error', error: String(err?.message || err) } : it));
