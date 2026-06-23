@@ -14,7 +14,9 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
   const [streaming, setStreaming] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [relayAvailable, setRelayAvailable] = useState(true);
-  const [muted, setMuted] = useState(false);
+  // Default muted: browsers block autoplay for un-muted video, so an un-muted default
+  // left the preview paused (looked like a frozen ~1fps feed). Unmute via the slider.
+  const [muted, setMuted] = useState(true);
   const [volume, setVolume] = useState(0.7);
   const [playerStatus, setPlayerStatus] = useState<'idle' | 'initializing' | 'loading' | 'playing' | 'buffering' | 'error' | 'unstable'>('idle');
   const [statusMessage, setStatusMessage] = useState<string>('');
