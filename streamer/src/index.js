@@ -564,6 +564,20 @@ async function streamContinuous(items) {
     : (CONFIG.RTMP_TARGET || '');
   const { listPath, toCleanup, allNormalized } = await buildContinuousList(items);
 
+  // The build takes several seconds to download all clips. If a control action
+  // (Stop/Restart/test-signal) fired during that window, its cleanupStreamer() wiped
+  // these temp files — bail cleanly instead of launching ffmpeg against deleted inputs
+  // (which failed with "Impossible to open …cont_0.mp4"). The loop rebuilds next cycle.
+  if (!RUNNING) {
+    for (const f of toCleanup) { try { await fs.unlink(f); } catch {} }
+    return;
+  }
+  try {
+    await fs.access(listPath);
+  } catch {
+    throw new Error('continuous list was cleaned up before ffmpeg could start');
+  }
+
   // Force encode mode if STREAMER_FORCE_ENCODE is set (useful for mixed audio/no-audio playlists)
   const forceEncode = (process.env.STREAMER_FORCE_ENCODE === 'true');
 
