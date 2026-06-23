@@ -85,18 +85,25 @@ async function getAsset(assetId) {
 
 async function downloadToTmp(key) {
   const tmp = path.join(os.tmpdir(), `ralphtv_trans_${Date.now()}.mp4`);
-  const res = await s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: key }));
-  const stream = res.Body;
-  const file = await fs.open(tmp, 'w');
-  const writer = file.createWriteStream();
-  await new Promise((resolve, reject) => {
-    stream.on('error', reject);
-    writer.on('error', reject);
-    writer.on('close', resolve);
-    stream.pipe(writer);
-  });
-  await file.close();
-  return tmp;
+  try {
+    const res = await s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: key }));
+    const stream = res.Body;
+    const file = await fs.open(tmp, 'w');
+    const writer = file.createWriteStream();
+    await new Promise((resolve, reject) => {
+      stream.on('error', reject);
+      writer.on('error', reject);
+      writer.on('close', resolve);
+      stream.pipe(writer);
+    });
+    await file.close();
+    return tmp;
+  } catch (e) {
+    // Don't leak a partial download if the S3 stream errors mid-pipe (the caller's
+    // `src` is never assigned, so its finally-cleanup wouldn't catch this file).
+    try { await fs.unlink(tmp); } catch {}
+    throw e;
+  }
 }
 
 async function hasAudioStream(inPath) {
@@ -202,9 +209,18 @@ async function uploadNorm(assetId, filePath) {
     ContentLength: size,
     ContentType: 'video/mp4',
   }));
+  // Parse VBIT ("2500k", "2.5M", or "2500000") to kbps defensively — the old
+  // parseInt(VBIT.replace('k','')) wrote NaN for any non-"Nk" format.
+  const bm = String(VBIT).trim().match(/^([\d.]+)\s*([kKmM]?)/);
+  let normBitrateKbps = null;
+  if (bm && Number.isFinite(parseFloat(bm[1]))) {
+    const n = parseFloat(bm[1]);
+    const u = bm[2].toLowerCase();
+    normBitrateKbps = Math.round(u === 'm' ? n * 1000 : u === 'k' ? n : n / 1000);
+  }
   await pool.query(
     `update assets set s3_key_norm=$2, norm_status=$3, norm_error=null, norm_width=$4, norm_height=$5, norm_fps=$6, norm_bitrate=$7 where id=$1`,
-    [assetId, key, 'ready', TARGET_W, TARGET_H, FPS, parseInt(VBIT.replace('k', ''), 10)]
+    [assetId, key, 'ready', TARGET_W, TARGET_H, FPS, normBitrateKbps]
   );
   return key;
 }
@@ -284,9 +300,13 @@ let lastPollAt = Date.now();
 
 const healthServer = http.createServer((req, res) => {
   if (req.url === '/healthz' || req.url === '/') {
-    const stale = Date.now() - lastPollAt > 30000; // 30s without poll = unhealthy
+    // Healthy if we polled recently OR we're actively encoding. A long ffmpeg encode
+    // blocks the poll loop, so without the currentChild check the health probe would
+    // go stale mid-job and Railway would KILL the container mid-transcode (restart loop
+    // that never finishes large files).
+    const stale = (Date.now() - lastPollAt > 30000) && !currentChild;
     res.writeHead(stale ? 503 : 200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: !stale, lastPollAt: new Date(lastPollAt).toISOString() }));
+    res.end(JSON.stringify({ ok: !stale, encoding: !!currentChild, lastPollAt: new Date(lastPollAt).toISOString() }));
   } else {
     res.writeHead(404);
     res.end('not found');

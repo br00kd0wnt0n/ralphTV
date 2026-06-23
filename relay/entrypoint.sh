@@ -107,8 +107,9 @@ nginx -t 2>&1 || {
   exit 1
 }
 
-echo "==> Starting stream monitor in background..."
-/monitor-stream.sh &
+echo "==> Starting stream monitor (auto-restart) in background..."
+# Supervise: if the monitor dies, relaunch it so /api/status never freezes forever.
+( while true; do /monitor-stream.sh; echo "==> monitor-stream exited, restarting in 1s"; sleep 1; done ) &
 
 echo "==> Starting nginx..."
 exec "$@"

@@ -21,8 +21,10 @@ ENV NGINX_WORKER_PROCESSES=auto \
 
 EXPOSE 8080 1935
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget -qO- http://localhost:8080/healthz || exit 1
+# Real healthcheck: nginx HTTP must answer AND the monitor must have refreshed
+# status.json within the last minute (proves the monitor loop is alive, not just nginx).
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD sh -c 'wget -qO- http://localhost:8080/healthz >/dev/null 2>&1 && [ -n "$(find /tmp/api/status.json -mmin -1 2>/dev/null)" ]' || exit 1
 
 ENTRYPOINT ["/bin/bash","/entrypoint.sh"]
 CMD ["nginx","-g","daemon off;"]

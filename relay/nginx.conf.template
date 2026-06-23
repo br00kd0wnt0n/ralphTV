@@ -38,6 +38,11 @@ http {
   keepalive_timeout  65;
   access_log /dev/stdout;
 
+  # Per-IP limits so a single scraper looping segment requests can't saturate the
+  # relay and DoS legitimate playback.
+  limit_conn_zone $binary_remote_addr zone=hlsconn:10m;
+  limit_req_zone  $binary_remote_addr zone=hlsreq:10m rate=30r/s;
+
   server {
     listen ${RELAY_HTTP_PORT};
     server_name _;
@@ -54,6 +59,8 @@ http {
     }
 
     location /hls/ {
+      limit_conn hlsconn 20;
+      limit_req  zone=hlsreq burst=60 nodelay;
       types {
         application/vnd.apple.mpegurl m3u8;
         video/mp2t ts;
