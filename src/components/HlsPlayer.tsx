@@ -35,6 +35,14 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
     }
   }, [onVideoReady]);
 
+  // React's `muted` attribute on <video> doesn't reliably update the DOM property on
+  // change, so the volume slider (which only flips React state) appeared to do nothing.
+  // Sync muted/volume to the element imperatively.
+  useEffect(() => {
+    const v = videoRef.current;
+    if (v) { v.muted = muted; v.volume = volume; }
+  }, [muted, volume]);
+
   // Check relay health on mount
   useEffect(() => {
     if (!CONFIG.RELAY_BASE_URL) {
