@@ -151,14 +151,13 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
     if (Hls.isSupported()) {
       const hls = new Hls({
         enableWorker: true,
-        // The relay is plain HLS (not LL-HLS); low-latency mode chases the live edge and
-        // rebuffers against a real-time encode. Sit a few segments back for stable play.
+        // Plain HLS (not LL-HLS). Use hls.js's well-tuned defaults and only sit a few
+        // segments back from the live edge. Do NOT set liveMaxLatencyDurationCount above
+        // the playlist length — targeting a latency the playlist can't hold makes the
+        // player stall on rolled-off segments (the "1 frame every ~15s" symptom).
         lowLatencyMode: false,
         backBufferLength: 30,
-        maxBufferLength: 30,
-        maxMaxBufferLength: 60,
-        liveSyncDurationCount: 4,
-        liveMaxLatencyDurationCount: 12,
+        liveSyncDurationCount: 3,
       });
 
       hlsRef.current = hls;
