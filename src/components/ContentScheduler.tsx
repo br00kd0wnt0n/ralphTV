@@ -136,6 +136,36 @@ export default function ContentScheduler() {
   // Backfill durations from S3 (presigned) for unknown assets
   useDurationBackfill(assets, setAssets);
 
+  // Auto-refresh normalization status: while any video is still pending/processing,
+  // poll the backend so the Library flips it to "ready" without a manual page refresh.
+  // Stops automatically once nothing is pending.
+  const anyNormalizing = useMemo(
+    () => assets.some(a => a.type === 'video' && (a.normStatus === 'pending' || a.normStatus === 'processing')),
+    [assets]
+  );
+  useEffect(() => {
+    if (!anyNormalizing || !CONFIG.USE_BACKEND_SCHEDULE || !CONFIG.API_BASE_URL) return;
+    let active = true;
+    const tick = async () => {
+      try {
+        const res = await listAssets();
+        if (!active || !Array.isArray(res.assets)) return;
+        const freshById = new Map<string, any>(res.assets.map((a: any) => [a.id, a]));
+        setAssets(prev => prev.map(a => {
+          const fresh: any = freshById.get(a.id);
+          if (!fresh) return a;
+          return {
+            ...a,
+            normStatus: fresh.norm_status ?? a.normStatus,
+            durationSec: typeof fresh.duration_sec === 'number' ? fresh.duration_sec : a.durationSec,
+          };
+        }));
+      } catch {}
+    };
+    const interval = setInterval(tick, 4000);
+    return () => { active = false; clearInterval(interval); };
+  }, [anyNormalizing]);
+
   // Cleanup: clear all pending save timers on unmount
   useEffect(() => {
     return () => {
