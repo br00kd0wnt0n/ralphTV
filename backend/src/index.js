@@ -123,8 +123,12 @@ app.post('/relay/publish-auth', express.urlencoded({ extended: false }), (req, r
 });
 
 // Auth helpers
+// Token lifetime is env-tunable (default 2h). Set JWT_TTL short (e.g. '90s') to
+// reproduce the "upload outlives its token" failure; set it longer (e.g. '12h') as a
+// mitigation for long uploads.
+const JWT_TTL = process.env.JWT_TTL || '2h';
 function signToken(payload) {
-  return jwt.sign(payload, _JWT_SECRET, { expiresIn: '2h' });
+  return jwt.sign(payload, _JWT_SECRET, { expiresIn: JWT_TTL });
 }
 
 function authMiddleware(req, res, next) {
