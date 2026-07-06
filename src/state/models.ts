@@ -18,6 +18,9 @@ export type Asset = {
   durationSec?: number;
   categoryId?: string;
   normStatus?: string; // 'pending' | 'processing' | 'ready' | 'error'
+  // Editor-controlled show blurb — surfaces on the ralph-world TV
+  // "show info" overlay as the current show's description.
+  description?: string;
 };
 
 export type Category = {

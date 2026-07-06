@@ -92,6 +92,20 @@ export async function updateAssetName(params: { assetId: string; name: string })
   return res.json();
 }
 
+/**
+ * Set the asset's description (the "show blurb" surfaced on the
+ * ralph-world TV overlay). Pass an empty string / null to clear.
+ */
+export async function updateAssetDescription(params: { assetId: string; description: string }) {
+  const res = await fetch(`${CONFIG.API_BASE_URL}/assets/${encodeURIComponent(params.assetId)}/description`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ description: params.description }),
+  });
+  if (!res.ok) throw new Error(`updateAssetDescription failed: ${res.status}`);
+  return res.json();
+}
+
 export async function deleteAsset(assetId: string) {
   const res = await fetch(`${CONFIG.API_BASE_URL}/assets/${encodeURIComponent(assetId)}`, {
     method: 'DELETE',

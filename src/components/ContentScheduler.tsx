@@ -110,6 +110,10 @@ export default function ContentScheduler() {
                     durationSec: typeof a.duration_sec === 'number' ? a.duration_sec : existing?.durationSec,
                     categoryId: a.category_id || existing?.categoryId,
                     normStatus: a.norm_status || existing?.normStatus,
+                    description:
+                      typeof a.description === 'string'
+                        ? a.description
+                        : existing?.description,
                   };
                   merged.push(mapped);
                   byId.delete(a.id);
@@ -314,6 +318,11 @@ export default function ContentScheduler() {
           asset={selectedAssetId ? (assetMap.get(selectedAssetId) || null) : null}
           onClose={() => setSelectedAssetId(null)}
           categories={categories}
+          onChangeDescription={(assetId, description) => {
+            setAssets((prev) =>
+              prev.map((a) => (a.id === assetId ? { ...a, description } : a))
+            );
+          }}
         />
         <SystemStatus />
       </div>

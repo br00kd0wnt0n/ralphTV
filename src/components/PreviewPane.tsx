@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { Asset, Category } from '../state/models';
 import Player from '@vimeo/player';
-import { getAssetReadUrl } from '../api/assets';
+import { getAssetReadUrl, updateAssetDescription } from '../api/assets';
 import { formatDuration } from '../state/schedule';
 
 function formatBytes(bytes: number): string {
@@ -14,13 +14,44 @@ function formatBytes(bytes: number): string {
 export default function PreviewPane({
   asset,
   onClose,
-  categories
+  categories,
+  onChangeDescription,
 }: {
   asset: Asset | null;
   onClose: () => void;
   categories?: Category[];
+  /** Optional callback so the parent can mirror the description into its
+   *  local asset state — same pattern as onChangeName on the library list. */
+  onChangeDescription?: (assetId: string, description: string) => void;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  // Local draft so the textarea stays editable without every keystroke
+  // firing a save. Committed on blur (or Cmd+Enter). Resets whenever a
+  // different asset gets selected.
+  const [descDraft, setDescDraft] = useState<string>(asset?.description ?? '');
+  const [descSaving, setDescSaving] = useState(false);
+  const [descSavedAt, setDescSavedAt] = useState<Date | null>(null);
+  useEffect(() => {
+    setDescDraft(asset?.description ?? '');
+    setDescSavedAt(null);
+  }, [asset?.id, asset?.description]);
+
+  const commitDescription = async () => {
+    if (!asset) return;
+    const current = (asset.description ?? '').trim();
+    const next = descDraft.trim();
+    if (next === current) return;
+    setDescSaving(true);
+    try {
+      await updateAssetDescription({ assetId: asset.id, description: next });
+      onChangeDescription?.(asset.id, next);
+      setDescSavedAt(new Date());
+    } catch (err) {
+      console.error('updateAssetDescription failed', err);
+    } finally {
+      setDescSaving(false);
+    }
+  };
 
   useEffect(() => {
     if (!asset || !containerRef.current) return;
@@ -136,6 +167,50 @@ export default function PreviewPane({
               <span>{asset.vimeoReference}</span>
             </div>
           )}
+
+          {/* Show blurb — flows to ralph-world's TeletextShowInfo overlay
+              as the current-show description. Save on blur (or Cmd/Ctrl+
+              Enter). Empty saves clear the field. */}
+          <div className="metadata-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 4 }}>
+            <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>Description:</span>
+              <span style={{ fontSize: 10, color: '#808080', fontWeight: 'normal' }}>
+                {descSaving
+                  ? 'Saving…'
+                  : descSavedAt
+                    ? `Saved ${descSavedAt.toLocaleTimeString()}`
+                    : 'Ralph TV show info'}
+              </span>
+            </label>
+            <textarea
+              value={descDraft}
+              onChange={(e) => setDescDraft(e.target.value.slice(0, 2000))}
+              onBlur={commitDescription}
+              onKeyDown={(e) => {
+                if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                  e.preventDefault();
+                  commitDescription();
+                }
+              }}
+              placeholder="What the audience should know about this show…"
+              rows={4}
+              style={{
+                width: '100%',
+                fontSize: 11,
+                lineHeight: 1.4,
+                padding: 6,
+                background: '#1a1a1a',
+                color: '#eee',
+                border: '1px solid #333',
+                borderRadius: 3,
+                resize: 'vertical',
+                fontFamily: 'inherit',
+              }}
+            />
+            <span style={{ fontSize: 10, color: '#666', alignSelf: 'flex-end' }}>
+              {descDraft.length}/2000
+            </span>
+          </div>
         </div>
       )}
     </div>

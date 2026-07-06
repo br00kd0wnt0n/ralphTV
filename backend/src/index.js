@@ -563,7 +563,7 @@ app.get('/assets', authMiddleware, async (req, res) => {
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 1000, 1), 2000);
     const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
     const { rows } = await pool.query(`
-      select a.id, a.file_name, a.mime_type, a.size, a.s3_key, a.file_type, a.uploaded_at, a.vimeo_reference, a.duration_sec, a.thumbnail_url, a.category_id, a.norm_status, a.s3_key_norm,
+      select a.id, a.file_name, a.mime_type, a.size, a.s3_key, a.file_type, a.uploaded_at, a.vimeo_reference, a.duration_sec, a.thumbnail_url, a.category_id, a.norm_status, a.s3_key_norm, a.description,
              coalesce(array_agg(t.name) filter (where t.name is not null), '{}') as tags
       from assets a
       left join asset_tags at on at.asset_id = a.id
@@ -636,6 +636,26 @@ app.post('/assets/:id/name', authMiddleware, requireWrite, async (req, res) => {
     return res.json({ ok: true });
   } catch (e) {
     console.error('asset name update error', e);
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Editable per-asset description. Empty string / whitespace clears it
+// (stored as NULL) so consumers can distinguish "not set" from "set to
+// nothing". Length capped to keep the /assets response bounded.
+app.post('/assets/:id/description', authMiddleware, requireWrite, async (req, res) => {
+  const id = req.params.id;
+  const { description } = req.body || {};
+  if (description !== null && typeof description !== 'string') {
+    return res.status(400).json({ message: 'Invalid description' });
+  }
+  const trimmed = typeof description === 'string' ? description.trim() : '';
+  if (trimmed.length > 2000) return res.status(400).json({ message: 'Description too long (max 2000)' });
+  try {
+    await pool.query('update assets set description=$2 where id=$1', [id, trimmed || null]);
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error('asset description update error', e);
     return res.status(500).json({ message: 'Server error' });
   }
 });
