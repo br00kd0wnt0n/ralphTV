@@ -63,19 +63,45 @@ http {
       return 204;
     }
 
+    # HLS media segments: immutable, unique filenames (stream-N.ts) that never change
+    # once written. Cache them HARD so a CDN (Cloudflare) serves all segment bandwidth
+    # from its edge and the relay only uploads each segment once. This is what makes
+    # the stream scale past the relay's own ~3 Mbps egress.
+    location ~ ^/hls/.+\.ts$ {
+      root /tmp;
+      types { video/mp2t ts; }
+      add_header Access-Control-Allow-Origin "*" always;
+      add_header Access-Control-Allow-Methods "GET, HEAD, OPTIONS" always;
+      add_header Access-Control-Allow-Headers "Origin, X-Requested-With, Content-Type, Accept, Range" always;
+      add_header Access-Control-Expose-Headers "Content-Length, Content-Range" always;
+      add_header Cache-Control "public, max-age=31536000, immutable" always;
+    }
+
+    # HLS manifest: rewritten every ~2s, so it must NOT be cached (it's tiny — caching
+    # it would only make viewers see a stale playlist and stall). Passes through to
+    # origin on every poll.
+    location ~ ^/hls/.+\.m3u8$ {
+      root /tmp;
+      types { application/vnd.apple.mpegurl m3u8; }
+      add_header Access-Control-Allow-Origin "*" always;
+      add_header Access-Control-Allow-Methods "GET, HEAD, OPTIONS" always;
+      add_header Access-Control-Allow-Headers "Origin, X-Requested-With, Content-Type, Accept, Range" always;
+      add_header Access-Control-Expose-Headers "Content-Length, Content-Range" always;
+      add_header Cache-Control "no-cache" always;
+    }
+
+    # Fallback for anything else under /hls/ (directory listing, etc.).
     location /hls/ {
       types {
         application/vnd.apple.mpegurl m3u8;
         video/mp2t ts;
       }
       root /tmp;
-      # Explicit CORS for HLS content
       add_header Access-Control-Allow-Origin "*" always;
       add_header Access-Control-Allow-Methods "GET, HEAD, OPTIONS" always;
       add_header Access-Control-Allow-Headers "Origin, X-Requested-With, Content-Type, Accept, Range" always;
       add_header Access-Control-Expose-Headers "Content-Length, Content-Range" always;
       add_header Cache-Control "no-cache" always;
-      expires -1;
     }
 
     location /api/destinations {
