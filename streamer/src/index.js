@@ -96,8 +96,6 @@ function ffmpegArgs(inputUrl, offsetSec = 0, useCopyMode = false) {
     '-i', inputUrl,
     // Add logo as input if enabled
     ...(useLogoOverlay ? ['-i', LOGO_PATH] : []),
-    // Add silent audio source as fallback
-    '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000',
   ];
 
   // Use filter_complex for logo overlay, otherwise simple -vf
@@ -117,13 +115,15 @@ function ffmpegArgs(inputUrl, offsetSec = 0, useCopyMode = false) {
     }
 
     args.push('-filter_complex', filterComplex);
-    args.push('-map', '[vout]', '-map', '0:a?', '-map', `${audioInputIndex}:a`);
+    // Map only the file's own audio. FLV allows at most ONE audio stream, so the
+    // previous extra silent-audio map produced two streams and ffmpeg refused to
+    // start ("at most one audio stream is supported in flv").
+    args.push('-map', '[vout]', '-map', '0:a?');
   } else {
-    // No logo, use simple filter
+    // No logo, use simple filter. Map only the file's audio (see note above).
     args.push(
       '-map', '0:v?',
       '-map', '0:a?',
-      '-map', '1:a',
       '-vf', videoFilter
     );
   }
@@ -155,6 +155,10 @@ let RUNNING = false;
 let CHILD = null;
 let CURRENT = null; // { assetId, index, startedAt, url }
 let CONTINUOUS_STATE = null; // { startedAt, sequence:[{assetId,durationSec}], slateBetweenSec }
+// Bumped every time cleanupStreamer() runs. An in-flight build captures the value
+// and aborts before spawning ffmpeg if it changed (i.e. a Stop/Restart wiped its
+// temp files mid-build) — prevents "Impossible to open cont_0.mp4" crash loops.
+let STREAM_GENERATION = 0;
 let SESSION_STARTED_AT = null;
 let TEMP_FILES = []; // Track temp files for cleanup
 let KILL_TIMEOUT = null; // Track SIGKILL timeout
@@ -171,6 +175,7 @@ let LOGO_IS_VIDEO = false;
 // Cleanup function with SIGKILL fallback
 async function cleanupStreamer() {
   console.log('==> Cleaning up streamer...');
+  STREAM_GENERATION++; // signal any in-flight build to abort before spawning ffmpeg
   CONTINUOUS_STATE = null; // stop reporting a current clip once stopped/restarted
 
   // Clear any pending SIGKILL timeout
@@ -588,6 +593,7 @@ async function streamContinuous(items) {
   const target = (process.env.STREAMER_FORCE_RTMPS === 'true')
     ? (CONFIG.RTMP_TARGET || '').replace(/^rtmp:\/\//, 'rtmps://')
     : (CONFIG.RTMP_TARGET || '');
+  const gen = STREAM_GENERATION; // capture before the (slow) download/build below
   const { listPath, toCleanup, allNormalized, sequence } = await buildContinuousList(items);
 
   // The build takes several seconds to download all clips. If a control action
@@ -686,6 +692,14 @@ async function streamContinuous(items) {
       // Removed -shortest to prevent premature stream termination in continuous mode
       '-flvflags', 'no_duration_filesize', '-f', 'flv', '-rtmp_live', 'live', target,
     );
+  }
+  // If a Stop/Restart/SIGTERM fired while we were downloading (it bumps
+  // STREAM_GENERATION and wipes TEMP_FILES), the list now points at deleted files.
+  // Abort before spawning so we don't crash-loop; the caller falls back cleanly.
+  if (gen !== STREAM_GENERATION || !RUNNING) {
+    await Promise.allSettled(toCleanup.map(f => fs.unlink(f).catch(() => {})));
+    await fs.unlink(listPath).catch(() => {});
+    throw new Error('continuous build aborted (stream restarted during setup)');
   }
   console.log('ffmpeg continuous', args.join(' '));
   // Record the play sequence + start time + which day it is so /status can report the
@@ -886,16 +900,20 @@ async function main() {
           await streamContinuous(items);
         } catch (e) {
           console.error('continuous mode error', e);
-          // Fallback: sequential normalized per item with slate between
+          // Fallback: sequential normalized per item with slate between.
+          // Always re-fetch a FRESH presigned URL (the playlist's item.url expires
+          // after ~10 min, so reusing it here 403s). Prefer copy mode for normalized
+          // assets so we avoid the re-encode path entirely.
           for (let i = 0; i < items.length; i++) {
             if (!RUNNING) break;
             let u, isNorm = false;
-            if (items[i].url) {
-              u = items[i].url;
-            } else {
+            try {
               const info = await getAssetInfo(items[i].assetId);
               u = info.url;
               isNorm = info.normalized;
+            } catch (e) {
+              console.error('fallback getAssetInfo failed', items[i].assetId, e?.message || e);
+              continue;
             }
             try { await streamOnce(u, 0, isNorm); } catch (err) { console.error('sequential fallback item failed', err); }
             if (SLATE_BETWEEN_SEC > 0) { try { await streamSlate(SLATE_BETWEEN_SEC); } catch {} }
