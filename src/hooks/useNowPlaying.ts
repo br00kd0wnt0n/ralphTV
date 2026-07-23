@@ -30,6 +30,8 @@ export function useNowPlaying(
       if (typeof document !== 'undefined' && document.hidden) return;
       try {
         let currentAssetId: string | null = null;
+        let currentDay: Day | null = null;
+        let currentIndex: number | null = null;
         let offsetSec = 0;
 
         // Streamer status (via the authenticated backend proxy) is authoritative.
@@ -38,6 +40,8 @@ export function useNowPlaying(
             const status = await streamerStatus();
             if (!cancelled && status?.running && status?.current?.assetId) {
               currentAssetId = status.current.assetId;
+              currentDay = (status.current.day as Day) || null;
+              currentIndex = typeof status.current.index === 'number' ? status.current.index : null;
               if (status.current.startedAt) {
                 const elapsed = Date.now() - status.current.startedAt;
                 offsetSec = Math.max(0, Math.floor(elapsed / 1000));
@@ -61,12 +65,22 @@ export function useNowPlaying(
 
         if (currentAssetId) {
           let found: NowPlaying | null = null;
-          for (const day of Object.keys(schedule) as Day[]) {
-            const items = schedule[day] || [];
-            const itemIndex = items.findIndex(it => it?.assetId === currentAssetId);
-            if (itemIndex !== -1) {
-              found = { day, itemIndex, offsetSec, assetId: currentAssetId };
-              break;
+          // Prefer the exact day/index the streamer reported — an asset can appear on
+          // several days, so a blind week-wide search would highlight the wrong one.
+          if (currentDay && schedule[currentDay]) {
+            const items = schedule[currentDay];
+            if (currentIndex != null && items[currentIndex]?.assetId === currentAssetId) {
+              found = { day: currentDay, itemIndex: currentIndex, offsetSec, assetId: currentAssetId };
+            } else {
+              const idx = items.findIndex(it => it?.assetId === currentAssetId);
+              if (idx !== -1) found = { day: currentDay, itemIndex: idx, offsetSec, assetId: currentAssetId };
+            }
+          }
+          // Fallback (older streamer without day, or day mismatch): week-wide search.
+          if (!found) {
+            for (const day of Object.keys(schedule) as Day[]) {
+              const idx = (schedule[day] || []).findIndex(it => it?.assetId === currentAssetId);
+              if (idx !== -1) { found = { day, itemIndex: idx, offsetSec, assetId: currentAssetId }; break; }
             }
           }
           setNowPlaying(found);

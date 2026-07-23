@@ -573,11 +573,11 @@ function computeContinuousCurrent(state) {
   for (let i = 0; i < seq.length; i++) {
     const clipDur = seq[i].durationSec || 0;
     if (pos < clipDur) {
-      return { assetId: seq[i].assetId, index: i, startedAt: Date.now() - Math.floor(pos * 1000), offsetSec: Math.floor(pos) };
+      return { assetId: seq[i].assetId, index: i, day: state.day, startedAt: Date.now() - Math.floor(pos * 1000), offsetSec: Math.floor(pos) };
     }
     pos -= clipDur;
     if (pos < slate) {
-      return { assetId: seq[i].assetId, index: i, startedAt: Date.now() - Math.floor(clipDur * 1000), offsetSec: Math.floor(clipDur) };
+      return { assetId: seq[i].assetId, index: i, day: state.day, startedAt: Date.now() - Math.floor(clipDur * 1000), offsetSec: Math.floor(clipDur) };
     }
     pos -= slate;
   }
@@ -688,8 +688,9 @@ async function streamContinuous(items) {
     );
   }
   console.log('ffmpeg continuous', args.join(' '));
-  // Record the play sequence + start time so /status can report the real current clip.
-  CONTINUOUS_STATE = { startedAt: Date.now(), sequence, slateBetweenSec: SLATE_BETWEEN_SEC };
+  // Record the play sequence + start time + which day it is so /status can report the
+  // real current clip AND the exact schedule day (an asset can appear on several days).
+  CONTINUOUS_STATE = { startedAt: Date.now(), sequence, slateBetweenSec: SLATE_BETWEEN_SEC, day: (process.env.STREAMER_DAY || dayName()) };
   await new Promise((resolve, reject) => {
     CHILD = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
     CHILD.on('error', (err) => { CONTINUOUS_STATE = null; console.error('ffmpeg continuous spawn error', err); reject(err); });
