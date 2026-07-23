@@ -14,6 +14,7 @@ export default function DayColumn({
   playbackMode,
   playStart,
   onPlaybackChange,
+  playingItemId,
 }: {
   day: Day;
   items: ScheduledItem[];
@@ -25,6 +26,7 @@ export default function DayColumn({
   playbackMode?: 'loop' | 'playthru';
   playStart?: string;
   onPlaybackChange?: (mode: 'loop' | 'playthru', start?: string) => void;
+  playingItemId?: string | null;
 }) {
   const total = items.reduce((acc, it) => acc + (assetMap.get(it.assetId)?.durationSec || 0), 0);
   const unknown = items.filter(it => !assetMap.get(it.assetId)?.durationSec).length;
@@ -45,6 +47,7 @@ export default function DayColumn({
         const asset = assetMap.get(item.assetId);
         const category = categories.find(c => c.id === asset?.categoryId);
         const color = category?.color;
+        const isPlaying = !!playingItemId && item.id === playingItemId;
         return (
           <Draggable key={item.id} draggableId={`sched-${item.id}`} index={index}>
             {(provided) => (
@@ -52,7 +55,7 @@ export default function DayColumn({
                 ref={provided.innerRef}
                 {...provided.draggableProps}
                 {...provided.dragHandleProps}
-                className={`scheduled-item ${asset?.type ?? 'unknown'}`}
+                className={`scheduled-item ${asset?.type ?? 'unknown'}${isPlaying ? ' now-playing' : ''}`}
                 title={asset?.name}
                 style={{
                   height: durationToHeightPx(asset?.durationSec, false),

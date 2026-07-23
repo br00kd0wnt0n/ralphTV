@@ -17,6 +17,7 @@ import LibraryPanel from './LibraryPanel';
 import DayColumn from './DayColumn';
 import WeekSummary from './WeekSummary';
 import { useDurationBackfill } from '../hooks/useDurationBackfill';
+import { useNowPlaying } from '../hooks/useNowPlaying';
 import StreamerControls from './StreamerControls';
 import ScheduleDiagnostics from './ScheduleDiagnostics';
 import PreviewPane from './PreviewPane';
@@ -42,6 +43,12 @@ export default function ContentScheduler() {
 
   const assetMap = useMemo(() => new Map(assets.map(a => [a.id, a])), [assets]);
   const [rt, setRt] = useState<RealtimeClient | null>(null);
+
+  // Currently-playing schedule slot → glow that item so admins can see what's on air.
+  const nowPlaying = useNowPlaying(schedule, assetMap);
+  const playingItemId = nowPlaying
+    ? (schedule[nowPlaying.day]?.[nowPlaying.itemIndex]?.id ?? null)
+    : null;
 
   // Debounce timers for schedule saves (per day)
   const saveTimersRef = useRef<Record<Day, NodeJS.Timeout | null>>({
@@ -349,6 +356,7 @@ export default function ContentScheduler() {
                       provided={provided}
                       assetMap={assetMap}
                       categories={categories}
+                      playingItemId={playingItemId}
                       onSelect={(id) => setSelectedAssetId(id)}
                       onDelete={(itemId) => handleDeleteFromSchedule(day, itemId)}
                       playbackMode={playback[day]?.mode}

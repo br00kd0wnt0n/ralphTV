@@ -689,6 +689,23 @@
   }
 }
 
+/* Currently-playing asset in the schedule — live "on-air" glow */
+.scheduled-item.now-playing {
+  outline: 2px solid #19f0c3;
+  outline-offset: -1px;
+  position: relative;
+  z-index: 3;
+  animation: now-playing-glow 1.6s ease-in-out infinite;
+}
+@keyframes now-playing-glow {
+  0%, 100% {
+    box-shadow: 0 0 8px rgba(25, 240, 195, 0.75), 0 0 18px rgba(25, 240, 195, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 16px rgba(25, 240, 195, 1), 0 0 34px rgba(25, 240, 195, 0.55);
+  }
+}
+
 /* Compact view adjustments */
 .content-scheduler.compact .scheduled-item {
   padding: 3px 6px;
