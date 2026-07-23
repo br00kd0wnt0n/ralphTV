@@ -305,9 +305,9 @@ async function streamOnce(url, offsetSec, useCopyMode = false) {
 const DOWNLOAD_TIMEOUT_MS = parseInt(process.env.STREAMER_DOWNLOAD_TIMEOUT_MS || '120000', 10);
 const MAX_DOWNLOAD_BYTES = parseInt(process.env.STREAMER_MAX_DOWNLOAD_MB || '4096', 10) * 1024 * 1024;
 
-async function downloadToTemp(url, ix) {
+async function downloadToTemp(url, ix, destPath) {
   assertSafeMediaInput(url);
-  const tmp = path.join(os.tmpdir(), `ralphtv_${Date.now()}_${ix}.mp4`);
+  const tmp = destPath || path.join(os.tmpdir(), `ralphtv_${Date.now()}_${ix}.mp4`);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
   try {
@@ -503,67 +503,89 @@ async function streamSlate(seconds) {
   });
 }
 
-async function buildContinuousList(items) {
-  // Check if items are pre-normalized via API; use normalized URLs if available
-  const toCleanup = [];
-  const normItems = [];
-  let allNormalized = true;
+function buildConcatLines(finalPaths, loopCount, slate) {
+  const lines = [];
+  for (let loop = 0; loop < loopCount; loop++) {
+    for (const p of finalPaths) {
+      lines.push(`file '${p.replace(/'/g, "'\\''")}'`);
+      if (SLATE_BETWEEN_SEC > 0 && slate) lines.push(`file '${slate.replace(/'/g, "'\\''")}'`);
+    }
+    if (slate && SLATE_IDLE_SEC > 0) lines.push(`file '${slate.replace(/'/g, "'\\''")}'`);
+  }
+  return lines.join('\n');
+}
 
+async function buildContinuousList(items) {
+  const toCleanup = [];
+  const sessionId = String(Date.now());
+
+  // 1) Resolve every URL + normalized flag first (fast — no downloads yet), and pick a
+  //    DETERMINISTIC temp path per clip so we can write the concat list before the
+  //    downloads finish.
+  const specs = [];
+  let allNormalized = true;
   for (let i = 0; i < items.length; i++) {
     let u, isNorm = false;
     if (items[i].url) {
       u = items[i].url;
-      // Strict check: only trust explicit normalized=true from backend
       isNorm = items[i].normalized === true;
-      console.log(`==> Asset ${items[i].assetId}: normalized=${isNorm} (from playlist)`);
     } else {
       const info = await getAssetInfo(items[i].assetId);
-      console.log(`==> Asset ${items[i].assetId}: normalized=${info.normalized} (from API)`);
       u = info.url;
-      // Strict check: only trust explicit normalized=true from backend
       isNorm = info.normalized === true;
     }
-
     if (!isNorm) allNormalized = false;
-
-    const dl = await downloadToTemp(u, `cont_${i}`);
-    toCleanup.push(dl);
-    TEMP_FILES.push(dl); // Track for global cleanup
-
-    // Only do local normalization if not pre-normalized and NORMALIZE flag is set
-    let nm = dl;
-    if (NORMALIZE && !isNorm) {
-      nm = await normalizeToTemp(dl, `cont_norm_${i}`);
-      toCleanup.push(nm);
-      TEMP_FILES.push(nm); // Track for global cleanup
-    }
-    normItems.push({ path: nm, assetId: items[i].assetId, durationSec: items[i].durationSec || 0 });
+    specs.push({
+      i, url: u, isNorm,
+      path: path.join(os.tmpdir(), `ralphtv_cont_${sessionId}_${i}.mp4`),
+      assetId: items[i].assetId,
+      durationSec: items[i].durationSec || 0,
+    });
   }
 
   const slate = await ensureSlateLocal();
-  const listPath = path.join(os.tmpdir(), `ralphtv_cont_${Date.now()}.txt`);
-  let lines = [];
-
-  // For copy mode, use many loops to maintain continuous stream for hours
-  // For encode mode, use configured loops to avoid excessive processing
+  const listPath = path.join(os.tmpdir(), `ralphtv_cont_${sessionId}.txt`);
   const loopCount = allNormalized ? 1000 : Math.max(1, CONTINUOUS_LOOPS);
+  const sequence = specs.map(s => ({ assetId: s.assetId, durationSec: s.durationSec }));
 
-  for (let loop = 0; loop < loopCount; loop++) {
-    for (let i = 0; i < normItems.length; i++) {
-      const it = normItems[i];
-      lines.push(`file '${it.path.replace(/'/g, "'\\''")}'`);
-      if (SLATE_BETWEEN_SEC > 0 && slate) {
-        lines.push(`file '${slate.replace(/'/g, "'\\''")}'`);
+  // Download (+optional normalize) one clip to its deterministic path.
+  const prepareClip = async (spec) => {
+    const dl = await downloadToTemp(spec.url, `cont_${spec.i}`, spec.path);
+    toCleanup.push(dl); TEMP_FILES.push(dl);
+    let nm = dl;
+    if (NORMALIZE && !spec.isNorm) {
+      nm = await normalizeToTemp(dl, `cont_norm_${sessionId}_${spec.i}`);
+      toCleanup.push(nm); TEMP_FILES.push(nm);
+    }
+    spec.finalPath = nm;
+  };
+
+  if (allNormalized) {
+    // FAST PATH (copy mode): final paths are the deterministic download paths — no
+    // normalization — so we can write the list now, download only the FIRST clip, and
+    // let the rest stream in behind live playback (each clip plays for minutes; a
+    // download takes seconds, so ffmpeg never catches up to an un-downloaded file).
+    specs.forEach(s => { s.finalPath = s.path; });
+    await fs.writeFile(listPath, buildConcatLines(specs.map(s => s.finalPath), loopCount, slate), 'utf8');
+    await prepareClip(specs[0]);
+    const backgroundDownload = async () => {
+      for (let i = 1; i < specs.length; i++) {
+        if (!RUNNING) return;
+        try { await prepareClip(specs[i]); }
+        catch (e) { console.error(`==> background download failed for ${specs[i].assetId}:`, e?.message || e); }
       }
-    }
-    if (slate && SLATE_IDLE_SEC > 0) {
-      lines.push(`file '${slate.replace(/'/g, "'\\''")}'`);
-    }
+      console.log(`==> Background download complete: ${specs.length} clips on disk`);
+    };
+    console.log(`==> Continuous list built — streaming now while ${specs.length - 1} clips download: ${specs.length} items, ${loopCount} loops`);
+    return { listPath, toCleanup, allNormalized, sequence, backgroundDownload };
   }
-  await fs.writeFile(listPath, lines.join('\n'), 'utf8');
-  console.log(`==> Continuous list built: ${normItems.length} items, ${loopCount} loops, allNormalized=${allNormalized}`);
-  const sequence = normItems.map(n => ({ assetId: n.assetId, durationSec: n.durationSec }));
-  return { listPath, toCleanup, allNormalized, sequence };
+
+  // SLOW PATH (needs local normalization): must produce every normalized file before
+  // building the list, so download+normalize all up front (rare; NORMALIZE opt-in).
+  for (const spec of specs) { if (!RUNNING) break; await prepareClip(spec); }
+  await fs.writeFile(listPath, buildConcatLines(specs.map(s => s.finalPath), loopCount, slate), 'utf8');
+  console.log(`==> Continuous list built: ${specs.length} items, ${loopCount} loops, allNormalized=${allNormalized}`);
+  return { listPath, toCleanup, allNormalized, sequence, backgroundDownload: null };
 }
 
 // In continuous mode ffmpeg plays one big concat, so there's no per-item callback.
@@ -594,7 +616,7 @@ async function streamContinuous(items) {
     ? (CONFIG.RTMP_TARGET || '').replace(/^rtmp:\/\//, 'rtmps://')
     : (CONFIG.RTMP_TARGET || '');
   const gen = STREAM_GENERATION; // capture before the (slow) download/build below
-  const { listPath, toCleanup, allNormalized, sequence } = await buildContinuousList(items);
+  const { listPath, toCleanup, allNormalized, sequence, backgroundDownload } = await buildContinuousList(items);
 
   // The build takes several seconds to download all clips. If a control action
   // (Stop/Restart/test-signal) fired during that window, its cleanupStreamer() wiped
@@ -701,6 +723,9 @@ async function streamContinuous(items) {
     await fs.unlink(listPath).catch(() => {});
     throw new Error('continuous build aborted (stream restarted during setup)');
   }
+  // Kick off the remaining downloads behind live playback (fire-and-forget; it stops
+  // itself if RUNNING flips false). ffmpeg reads at -re (1x) so it can't outrun this.
+  if (backgroundDownload) backgroundDownload();
   console.log('ffmpeg continuous', args.join(' '));
   // Record the play sequence + start time + which day it is so /status can report the
   // real current clip AND the exact schedule day (an asset can appear on several days).

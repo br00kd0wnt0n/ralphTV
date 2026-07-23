@@ -172,6 +172,46 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
 
       hlsRef.current = hls;
 
+      // --- Playback diagnostics --------------------------------------------------
+      // Logs why the player stalls. Open DevTools console and filter for [hls-diag].
+      // Disable at runtime with: localStorage.hlsDiag = '0'  (then reload).
+      const DIAG = typeof localStorage === 'undefined' || localStorage.getItem('hlsDiag') !== '0';
+      if (DIAG) {
+        const diag = (...a: unknown[]) => console.log('[hls-diag]', ...a);
+        hls.on(Hls.Events.FRAG_LOADED, (_e, d: any) => {
+          const st = d?.frag?.stats || d?.stats;
+          if (!st) return;
+          const ms = Math.round((st.loading?.end ?? st.tload ?? 0) - (st.loading?.start ?? st.trequest ?? 0));
+          const kb = Math.round((st.total ?? st.loaded ?? 0) / 1024);
+          const dur = d?.frag?.duration ?? 0;
+          // A segment that takes >50% of its own playback time to fetch = marginal bandwidth.
+          const slow = dur > 0 && ms > dur * 500;
+          diag(`frag#${d?.frag?.sn} ${kb}KB in ${ms}ms (plays ${dur.toFixed(1)}s)${slow ? '  ⚠ SLOW DOWNLOAD' : ''}`);
+        });
+        hls.on(Hls.Events.ERROR, (_e, d: any) => {
+          diag(`ERROR ${d?.details} fatal=${!!d?.fatal} type=${d?.type}` +
+            (d?.response?.code ? ` http=${d.response.code}` : '') +
+            (d?.details === 'bufferStalledError' ? '  ← PLAYER STARVED (no data to play)' : ''));
+        });
+        const diagTimer = setInterval(() => {
+          if (hlsRef.current !== hls) { clearInterval(diagTimer); return; }
+          const v = videoRef.current;
+          if (!v || document.hidden) return;
+          let ahead = 0;
+          try {
+            for (let i = 0; i < v.buffered.length; i++) {
+              if (v.buffered.start(i) <= v.currentTime + 0.1 && v.currentTime <= v.buffered.end(i)) {
+                ahead = v.buffered.end(i) - v.currentTime;
+              }
+            }
+          } catch { /* buffered can throw if not ready */ }
+          diag(`t=${v.currentTime.toFixed(1)}s buffered-ahead=${ahead.toFixed(1)}s ready=${v.readyState} paused=${v.paused}` +
+            (typeof (hls as any).latency === 'number' ? ` liveLatency=${(hls as any).latency.toFixed(1)}s` : '') +
+            (ahead < 0.5 && !v.paused ? '  ⚠ STARVING' : ''));
+        }, 2000);
+      }
+      // ---------------------------------------------------------------------------
+
       hls.on(Hls.Events.ERROR, (event, data) => {
         // Stream ended: when the broadcast stops, the relay 404s the live playlist.
         // hls.js reports this as a NON-fatal level/manifest load error and keeps
