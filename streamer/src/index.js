@@ -639,8 +639,37 @@ async function streamContinuous(items) {
   const useLogoOverlay = LOGO_ENABLE && LOGO_EXISTS;
   const needsEncode = forceEncode || useLogoOverlay;
 
+  // ABR (opt-in): publish TWO renditions so hls.js adapts to the viewer's bandwidth.
+  // The source 720p is stream-COPIED (no extra encode cost); only the small rendition
+  // is encoded. The relay's hls_variant stitches them into one master at stream.m3u8.
+  const abr = (process.env.STREAMER_ABR === 'true');
   let args;
-  if (allNormalized && !needsEncode) {
+  if (allNormalized && !needsEncode && abr) {
+    const LOW_H = parseInt(process.env.ABR_LOW_HEIGHT || '360', 10);
+    const LOW_VB = process.env.ABR_LOW_VBITRATE || '700k';
+    const LOW_AB = process.env.ABR_LOW_ABITRATE || '96k';
+    const bufsize = `${(parseInt(LOW_VB, 10) || 700) * 2}k`;
+    console.log(`==> Using COPY MODE + ABR (720p copy + ${LOW_H}p @ ${LOW_VB} encode)`);
+    args = [
+      '-loglevel', 'info',
+      '-re', '-f', 'concat', '-safe', '0', '-i', listPath,
+      // Variant "high": source, stream-copied (no re-encode).
+      '-map', '0:v:0', '-map', '0:a:0?',
+      '-c:v', 'copy', '-c:a', 'copy',
+      '-flvflags', 'no_duration_filesize', '-f', 'flv', '-rtmp_live', 'live', `${target}_high`,
+      // Variant "low": downscaled + encoded. Keyframes forced every 1s so segments line
+      // up with the copied variant for clean adaptive switching.
+      '-map', '0:v:0', '-map', '0:a:0?',
+      '-vf', `scale=-2:${LOW_H}`,
+      '-c:v', 'libx264', '-preset', 'veryfast', '-profile:v', 'main', '-pix_fmt', 'yuv420p',
+      '-b:v', LOW_VB, '-maxrate', LOW_VB, '-bufsize', bufsize,
+      '-g', String(CONFIG.FPS), '-keyint_min', String(CONFIG.FPS), '-sc_threshold', '0',
+      '-force_key_frames', 'expr:gte(t,n_forced*1)',
+      '-r', String(CONFIG.FPS),
+      '-c:a', 'aac', '-b:a', LOW_AB, '-ar', '48000', '-ac', '2',
+      '-flvflags', 'no_duration_filesize', '-f', 'flv', '-rtmp_live', 'live', `${target}_low`,
+    ];
+  } else if (allNormalized && !needsEncode) {
     // COPY MODE: All assets pre-normalized, just stream without re-encoding
     console.log('==> Using COPY MODE (all assets pre-normalized)');
     args = [

@@ -30,6 +30,12 @@ rtmp {
       hls_fragment 2s;
       hls_playlist_length 12s;
       hls_cleanup on;
+
+      # ABR variants (opt-in): populated by entrypoint from RELAY_ABR. When the streamer
+      # publishes stream_high + stream_low, these stitch them into a master playlist at
+      # stream.m3u8. Empty (and inert) unless RELAY_ABR=true, so single-rendition
+      # publishing is unaffected.
+      ${RELAY_HLS_VARIANTS}
     }
   }
 }

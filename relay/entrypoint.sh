@@ -74,6 +74,19 @@ else
 fi
 export RELAY_ON_PUBLISH
 
+# ABR variants (opt-in). When RELAY_ABR=true, declare the two renditions the streamer
+# publishes (stream_high / stream_low) so nginx-rtmp builds a master playlist. Empty
+# otherwise, preserving single-rendition behaviour.
+RELAY_HLS_VARIANTS=""
+if [ "${RELAY_ABR:-}" = "true" ]; then
+  RELAY_HLS_VARIANTS='hls_variant _high BANDWIDTH=2664000,RESOLUTION=1280x720,NAME="720p";
+      hls_variant _low BANDWIDTH=800000,RESOLUTION=640x360,NAME="360p";'
+  echo "==> ABR ENABLED (hls_variant _high + _low)"
+else
+  echo "==> ABR disabled (set RELAY_ABR=true to enable adaptive bitrate)"
+fi
+export RELAY_HLS_VARIANTS
+
 # Generate JSON files for API endpoints
 echo "==> Creating directories..."
 mkdir -p /tmp/api /tmp/hls
@@ -95,7 +108,7 @@ echo "==> RELAY_HTTP_PORT=${RELAY_HTTP_PORT}"
 echo "==> RELAY_RTMP_PORT=${RELAY_RTMP_PORT}"
 echo "==> NGINX_WORKER_PROCESSES=${NGINX_WORKER_PROCESSES}"
 # Only substitute our variables, not nginx variables like $request_method
-envsubst '${NGINX_WORKER_PROCESSES} ${RELAY_RTMP_PORT} ${RELAY_PUSH_LINES} ${RELAY_ON_PUBLISH} ${RELAY_HTTP_PORT}' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
+envsubst '${NGINX_WORKER_PROCESSES} ${RELAY_RTMP_PORT} ${RELAY_PUSH_LINES} ${RELAY_ON_PUBLISH} ${RELAY_HTTP_PORT} ${RELAY_HLS_VARIANTS}' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
 
 echo "==> Generated config:"
 cat /etc/nginx/nginx.conf
