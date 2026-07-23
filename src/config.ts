@@ -1,9 +1,10 @@
-// Ensure URL has protocol (https:// or http://)
+// Ensure URL has protocol (https:// or http://) and no trailing slash, so callers
+// that append paths (e.g. `${RELAY_BASE_URL}/hls/stream.m3u8`) can't produce a
+// double slash when the env var is set with a trailing "/".
 function ensureProtocol(url: string): string {
   if (!url) return '';
-  if (url.startsWith('http://') || url.startsWith('https://')) return url;
-  // Default to https:// for production URLs
-  return `https://${url}`;
+  const withProto = (url.startsWith('http://') || url.startsWith('https://')) ? url : `https://${url}`;
+  return withProto.replace(/\/+$/, '');
 }
 
 // Ensure WebSocket URL has protocol (wss:// or ws://)
