@@ -1322,6 +1322,67 @@ app.get('/streamer/status', authMiddleware, async (_req, res) => {
   }
 });
 
+// Authoritative "now playing" for public consumers (Ralph World TV, embeds).
+// Reflects the streamer's REAL current clip (not a time-of-day estimate), enriched
+// with show info, plus the next item in the day's schedule. Public: reveals only
+// what's currently on air.
+const NP_CHANNEL = process.env.DEFAULT_CHANNEL || 'default';
+const NP_WEEK = process.env.DEFAULT_WEEK || 'current';
+function toShow(row, offsetSec, day) {
+  if (!row) return null;
+  return {
+    assetId: row.id,
+    showName: stripExtension(row.file_name || ''),
+    description: row.description ?? null,
+    thumbnailUrl: row.thumbnail_url ?? null,
+    durationSec: row.duration_sec != null ? Number(row.duration_sec) : null,
+    offsetSec: offsetSec ?? null,
+    day: day ?? null,
+  };
+}
+app.get('/now-playing', async (_req, res) => {
+  const out = { streaming: false, current: null, next: null };
+  if (!STREAMER_BASE_URL) return res.json(out);
+  let cur = null;
+  try {
+    const r = await fetch(`${STREAMER_BASE_URL}/status`, { headers: streamerAuthHeaders(), signal: AbortSignal.timeout(3000) });
+    if (r.ok) {
+      const s = await r.json();
+      out.streaming = !!s?.running;
+      cur = s?.running ? s.current : null;
+    }
+  } catch { return res.json(out); }
+  if (!cur?.assetId) return res.json(out);
+  const day = cur.day || dayNameFor();
+  try {
+    const sched = await pool.query('select id from schedules where channel=$1 and week=$2 and day=$3', [NP_CHANNEL, NP_WEEK, day]);
+    if (sched.rows.length) {
+      const items = (await pool.query(
+        `select a.id, a.file_name, a.description, a.thumbnail_url, a.duration_sec
+           from schedule_items si join assets a on a.id = si.asset_id
+          where si.schedule_id=$1 order by si.position asc`,
+        [sched.rows[0].id]
+      )).rows;
+      if (items.length) {
+        let idx = (Number.isInteger(cur.index) && items[cur.index]?.id === cur.assetId)
+          ? cur.index
+          : items.findIndex(it => it.id === cur.assetId);
+        if (idx < 0) idx = 0;
+        out.current = toShow(items[idx], cur.offsetSec, day);
+        out.next = toShow(items[(idx + 1) % items.length], null, day);
+        return res.json(out);
+      }
+    }
+    // No schedule row/items — still return the current asset's info.
+    const a = await pool.query('select id, file_name, description, thumbnail_url, duration_sec from assets where id=$1', [cur.assetId]);
+    out.current = toShow(a.rows[0], cur.offsetSec, day);
+    return res.json(out);
+  } catch (e) {
+    console.error('now-playing error', e?.message || e);
+    return res.json(out);
+  }
+});
+
 // HTTP server + WebSocket
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
