@@ -32,16 +32,62 @@
 }
 
 /* Middle row: Schedule Grid takes full width */
-.schedule-grid {
+/* Schedule module wrapper: takes the middle grid row and stacks header + grid. */
+.schedule-module {
   grid-column: 1;
   grid-row: 2;
+  order: 2;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.schedule-grid {
   display: flex;
   gap: 10px;
   padding: 0;
   width: 100%;
   max-width: 100%;
   overflow-x: hidden;
-  order: 2;
+}
+
+/* Schedule header bar — matches .preview-header / .hls-player-header. */
+.schedule-header {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  padding: 10px 14px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+  user-select: none;
+  border-bottom: 1px solid var(--border-default);
+  margin-bottom: 8px;
+}
+
+.schedule-header h4 {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.schedule-onair {
+  color: #19f0c3;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 11px;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Bottom row: Categories panel at bottom */

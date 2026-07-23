@@ -15,6 +15,7 @@ import { listCategories, listAssets } from '../api/assets';
 import CategoriesPanel from './CategoriesPanel';
 import LibraryPanel from './LibraryPanel';
 import DayColumn from './DayColumn';
+import PlayheadIndicator from './PlayheadIndicator';
 import WeekSummary from './WeekSummary';
 import { useDurationBackfill } from '../hooks/useDurationBackfill';
 import { useNowPlaying } from '../hooks/useNowPlaying';
@@ -345,8 +346,17 @@ export default function ContentScheduler() {
             onSelect={(id) => setSelectedAssetId(id)}
           />
 
-          {/* Schedule Grid - full width */}
-          <div className="schedule-grid" style={{ position: 'relative' }}>
+          {/* Schedule module (header bar + grid) */}
+          <div className="schedule-module">
+            <div className="schedule-header">
+              <h4>Weekly Schedule</h4>
+              {nowPlaying && (
+                <span className="schedule-onair" title="Currently playing">
+                  ● ON AIR — {assetMap.get(nowPlaying.assetId)?.name ?? '—'}
+                </span>
+              )}
+            </div>
+            <div className="schedule-grid" style={{ position: 'relative' }}>
               {DAYS.map((day) => (
                 <Droppable droppableId={day} key={day}>
                   {(provided) => (
@@ -369,6 +379,8 @@ export default function ContentScheduler() {
                   )}
                 </Droppable>
               ))}
+              <PlayheadIndicator schedule={schedule} assetMap={assetMap} playhead={nowPlaying} />
+            </div>
           </div>
 
           {/* Categories panel - full width below schedule */}

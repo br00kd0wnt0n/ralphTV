@@ -1,121 +1,35 @@
 import React, { useEffect, useState } from 'react';
-import { streamerStatus } from '../api/streamer';
-import { getStatusToday } from '../api/status';
-import { CONFIG } from '../config';
 import type { Day, ScheduledItem, Asset } from '../state/models';
 import { durationToHeightPx } from '../state/schedule';
+import type { NowPlaying } from '../hooks/useNowPlaying';
 
-interface PlayheadData {
-  day: Day;
-  itemIndex: number;
-  offsetSec: number;
-}
-
+/**
+ * Renders the horizontal "playhead" line at the current playback position within the
+ * schedule. The current slot + offset is supplied by the parent (via useNowPlaying),
+ * so this component only handles positioning/rendering.
+ */
 export default function PlayheadIndicator({
   schedule,
   assetMap,
+  playhead,
 }: {
   schedule: Record<Day, ScheduledItem[]>;
   assetMap: Map<string, Asset>;
+  playhead: NowPlaying | null;
 }) {
-  const [playhead, setPlayhead] = useState<PlayheadData | null>(null);
   const [leftPosition, setLeftPosition] = useState<number | null>(null);
   const [columnWidth, setColumnWidth] = useState(160);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const fetchStatus = async () => {
-      try {
-        let currentAssetId: string | null = null;
-        let offsetSec = 0;
-
-        // Prefer streamer as source of truth if available
-        if (CONFIG.STREAMER_BASE_URL) {
-          try {
-            const status = await streamerStatus();
-            if (!cancelled && status?.running && status?.current?.assetId) {
-              currentAssetId = status.current.assetId;
-
-              // Calculate offset based on when the asset started playing
-              if (status.current.startedAt) {
-                const elapsed = Date.now() - status.current.startedAt;
-                offsetSec = Math.max(0, Math.floor(elapsed / 1000));
-
-                // Cap at asset duration to prevent overflow
-                const asset = currentAssetId ? assetMap.get(currentAssetId) : undefined;
-                if (asset?.durationSec) {
-                  offsetSec = Math.min(offsetSec, asset.durationSec);
-                }
-              }
-            }
-          } catch (e) {
-            // Streamer unavailable, fall back to time-based
-          }
-        }
-
-        // Fallback to time-based calculation if streamer not available
-        if (!currentAssetId && CONFIG.API_BASE_URL) {
-          const status = await getStatusToday(CONFIG.CHANNEL, CONFIG.WEEK);
-          if (!cancelled && status?.item?.assetId) {
-            currentAssetId = status.item.assetId;
-            offsetSec = status.offsetSec || 0;
-          }
-        }
-
-        if (cancelled) return;
-
-        // Find which day and position this asset is in the schedule
-        if (currentAssetId) {
-          let found = false;
-          for (const day of Object.keys(schedule) as Day[]) {
-            const items = schedule[day] || [];
-            const itemIndex = items.findIndex(it => it?.assetId === currentAssetId);
-
-            if (itemIndex !== -1) {
-              setPlayhead({
-                day,
-                itemIndex,
-                offsetSec
-              });
-              found = true;
-              break;
-            }
-          }
-
-          if (!found) {
-            setPlayhead(null);
-          }
-        } else {
-          setPlayhead(null);
-        }
-      } catch (e) {
-        // Silently handle errors
-        setPlayhead(null);
-      }
-    };
-
-    fetchStatus();
-    const interval = setInterval(fetchStatus, 2000); // Update every 2 seconds
-
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [schedule, assetMap]);
-
-  // Calculate horizontal position dynamically from DOM
+  // Calculate horizontal position dynamically from the DOM.
   useEffect(() => {
     if (!playhead) return;
 
     const updatePosition = () => {
       const scheduleGrid = document.querySelector('.schedule-grid');
       if (!scheduleGrid) return;
-
       const dayColumns = scheduleGrid.querySelectorAll('.schedule-day');
       const dayIndex = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].indexOf(playhead.day);
       const dayColumn = dayColumns[dayIndex] as HTMLElement;
-
       if (dayColumn) {
         const gridRect = scheduleGrid.getBoundingClientRect();
         const columnRect = dayColumn.getBoundingClientRect();
@@ -126,36 +40,26 @@ export default function PlayheadIndicator({
       }
     };
 
-    // Initial position calculation
     updatePosition();
-
-    // Update position on window resize
     window.addEventListener('resize', updatePosition);
-
-    // Also set up a resize observer for the schedule grid
     const scheduleGrid = document.querySelector('.schedule-grid');
     let resizeObserver: ResizeObserver | null = null;
-
     if (scheduleGrid) {
       resizeObserver = new ResizeObserver(updatePosition);
       resizeObserver.observe(scheduleGrid);
     }
-
     return () => {
       window.removeEventListener('resize', updatePosition);
-      if (resizeObserver) {
-        resizeObserver.disconnect();
-      }
+      if (resizeObserver) resizeObserver.disconnect();
     };
   }, [playhead?.day]);
 
   if (!playhead || leftPosition === null) return null;
 
-  // Calculate the vertical position of the playhead
+  // Vertical position: sum of item heights before the current one, plus the offset
+  // within the current item.
   const items = schedule[playhead.day] || [];
   let accumulatedHeight = 0;
-
-  // Add heights of all items before the current one
   for (let i = 0; i < playhead.itemIndex; i++) {
     if (!items[i]) continue;
     const asset = assetMap.get(items[i].assetId);
@@ -163,7 +67,6 @@ export default function PlayheadIndicator({
     accumulatedHeight += 8; // margin between items (4px top + 4px bottom)
   }
 
-  // Add the offset within the current item
   const currentItem = items[playhead.itemIndex];
   if (!currentItem) return null;
   const currentAsset = assetMap.get(currentItem.assetId);
@@ -173,8 +76,7 @@ export default function PlayheadIndicator({
     accumulatedHeight += itemHeight * progress;
   }
 
-  // Add header height (h4 + margin)
-  const headerHeight = 32;
+  const headerHeight = 32; // day-column header (h4 + margin)
   const topPosition = headerHeight + accumulatedHeight;
 
   return (
@@ -190,7 +92,7 @@ export default function PlayheadIndicator({
         boxShadow: '0 0 8px var(--brand-pink)',
         zIndex: 100,
         pointerEvents: 'none',
-        animation: 'pulse-playhead 1.5s ease-in-out infinite'
+        animation: 'pulse-playhead 1.5s ease-in-out infinite',
       }}
     >
       <div
@@ -202,7 +104,7 @@ export default function PlayheadIndicator({
           height: '0',
           borderTop: '5px solid transparent',
           borderBottom: '5px solid transparent',
-          borderLeft: '6px solid var(--brand-pink)'
+          borderLeft: '6px solid var(--brand-pink)',
         }}
       />
     </div>
