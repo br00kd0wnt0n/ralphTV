@@ -172,10 +172,11 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
 
       hlsRef.current = hls;
 
-      // --- Playback diagnostics --------------------------------------------------
-      // Logs why the player stalls. Open DevTools console and filter for [hls-diag].
-      // Disable at runtime with: localStorage.hlsDiag = '0'  (then reload).
-      const DIAG = typeof localStorage === 'undefined' || localStorage.getItem('hlsDiag') !== '0';
+      // --- Playback diagnostics (opt-in) -----------------------------------------
+      // Logs why the player stalls (slow downloads / starvation / live latency).
+      // Enable at runtime with: localStorage.hlsDiag = '1'  (then reload), filter
+      // the console for [hls-diag]. Great for answering "is it my connection?".
+      const DIAG = typeof localStorage !== 'undefined' && localStorage.getItem('hlsDiag') === '1';
       if (DIAG) {
         const diag = (...a: unknown[]) => console.log('[hls-diag]', ...a);
         hls.on(Hls.Events.FRAG_LOADED, (_e, d: any) => {
