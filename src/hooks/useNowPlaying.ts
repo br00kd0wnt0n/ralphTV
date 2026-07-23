@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { streamerStatus } from '../api/streamer';
-import { getStatusToday } from '../api/status';
 import { CONFIG } from '../config';
 import type { Day, ScheduledItem, Asset } from '../state/models';
 
@@ -52,14 +51,9 @@ export function useNowPlaying(
           } catch { /* streamer unreachable — fall back below */ }
         }
 
-        // Fallback: backend time-based status.
-        if (!currentAssetId && CONFIG.API_BASE_URL) {
-          const status = await getStatusToday(CONFIG.CHANNEL, CONFIG.WEEK);
-          if (!cancelled && status?.item?.assetId) {
-            currentAssetId = status.item.assetId;
-            offsetSec = status.offsetSec || 0;
-          }
-        }
+        // NOTE: no time-based fallback here. "ON AIR" / the playhead must reflect what
+        // the streamer is ACTUALLY playing — when it's stopped, show nothing rather
+        // than a wall-clock guess (which misleadingly read "ON AIR" before Start).
 
         if (cancelled) return;
 
