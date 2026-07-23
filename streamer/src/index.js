@@ -154,6 +154,7 @@ function ffmpegArgs(inputUrl, offsetSec = 0, useCopyMode = false) {
 let RUNNING = false;
 let CHILD = null;
 let CURRENT = null; // { assetId, index, startedAt, url }
+let CONTINUOUS_STATE = null; // { startedAt, sequence:[{assetId,durationSec}], slateBetweenSec }
 let SESSION_STARTED_AT = null;
 let TEMP_FILES = []; // Track temp files for cleanup
 let KILL_TIMEOUT = null; // Track SIGKILL timeout
@@ -170,6 +171,7 @@ let LOGO_IS_VIDEO = false;
 // Cleanup function with SIGKILL fallback
 async function cleanupStreamer() {
   console.log('==> Cleaning up streamer...');
+  CONTINUOUS_STATE = null; // stop reporting a current clip once stopped/restarted
 
   // Clear any pending SIGKILL timeout
   if (KILL_TIMEOUT) {
@@ -530,7 +532,7 @@ async function buildContinuousList(items) {
       toCleanup.push(nm);
       TEMP_FILES.push(nm); // Track for global cleanup
     }
-    normItems.push({ path: nm });
+    normItems.push({ path: nm, assetId: items[i].assetId, durationSec: items[i].durationSec || 0 });
   }
 
   const slate = await ensureSlateLocal();
@@ -555,14 +557,38 @@ async function buildContinuousList(items) {
   }
   await fs.writeFile(listPath, lines.join('\n'), 'utf8');
   console.log(`==> Continuous list built: ${normItems.length} items, ${loopCount} loops, allNormalized=${allNormalized}`);
-  return { listPath, toCleanup, allNormalized };
+  const sequence = normItems.map(n => ({ assetId: n.assetId, durationSec: n.durationSec }));
+  return { listPath, toCleanup, allNormalized, sequence };
+}
+
+// In continuous mode ffmpeg plays one big concat, so there's no per-item callback.
+// Derive the currently-playing clip from elapsed wall-clock time (the stream is `-re`,
+// i.e. real-time) against the ordered clip durations. Returns a CURRENT-shaped object.
+function computeContinuousCurrent(state) {
+  const seq = state?.sequence || [];
+  const slate = state?.slateBetweenSec || 0;
+  const loopDur = seq.reduce((a, s) => a + (s.durationSec || 0) + slate, 0);
+  if (loopDur <= 0) return null;
+  let pos = ((Date.now() - state.startedAt) / 1000) % loopDur;
+  for (let i = 0; i < seq.length; i++) {
+    const clipDur = seq[i].durationSec || 0;
+    if (pos < clipDur) {
+      return { assetId: seq[i].assetId, index: i, startedAt: Date.now() - Math.floor(pos * 1000), offsetSec: Math.floor(pos) };
+    }
+    pos -= clipDur;
+    if (pos < slate) {
+      return { assetId: seq[i].assetId, index: i, startedAt: Date.now() - Math.floor(clipDur * 1000), offsetSec: Math.floor(clipDur) };
+    }
+    pos -= slate;
+  }
+  return null;
 }
 
 async function streamContinuous(items) {
   const target = (process.env.STREAMER_FORCE_RTMPS === 'true')
     ? (CONFIG.RTMP_TARGET || '').replace(/^rtmp:\/\//, 'rtmps://')
     : (CONFIG.RTMP_TARGET || '');
-  const { listPath, toCleanup, allNormalized } = await buildContinuousList(items);
+  const { listPath, toCleanup, allNormalized, sequence } = await buildContinuousList(items);
 
   // The build takes several seconds to download all clips. If a control action
   // (Stop/Restart/test-signal) fired during that window, its cleanupStreamer() wiped
@@ -662,13 +688,16 @@ async function streamContinuous(items) {
     );
   }
   console.log('ffmpeg continuous', args.join(' '));
+  // Record the play sequence + start time so /status can report the real current clip.
+  CONTINUOUS_STATE = { startedAt: Date.now(), sequence, slateBetweenSec: SLATE_BETWEEN_SEC };
   await new Promise((resolve, reject) => {
     CHILD = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
-    CHILD.on('error', (err) => { console.error('ffmpeg continuous spawn error', err); reject(err); });
+    CHILD.on('error', (err) => { CONTINUOUS_STATE = null; console.error('ffmpeg continuous spawn error', err); reject(err); });
     CHILD.stdout.on('data', (d) => process.stdout.write(d.toString()));
     CHILD.stderr.on('data', (d) => process.stderr.write(d.toString()));
     CHILD.on('exit', (code) => {
       CHILD = null;
+      CONTINUOUS_STATE = null;
       Promise.allSettled(toCleanup.map(f => fs.unlink(f))).then(() => fs.unlink(listPath).catch(() => {}));
       if (code === 0) resolve(); else {
         console.error('ffmpeg continuous exited with code', code);
@@ -743,7 +772,14 @@ async function main() {
     if (req.url === '/status') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       const sessionTimeSec = RUNNING && SESSION_STARTED_AT ? Math.floor((Date.now() - SESSION_STARTED_AT) / 1000) : 0;
-      res.end(JSON.stringify({ running: RUNNING, current: CURRENT, sessionStartedAt: SESSION_STARTED_AT, sessionTimeSec }));
+      // In continuous mode, derive the real current clip from elapsed time; otherwise
+      // use the per-item CURRENT set by the single/sequential paths.
+      let current = CURRENT;
+      if (RUNNING && CONTINUOUS_STATE) {
+        const computed = computeContinuousCurrent(CONTINUOUS_STATE);
+        if (computed) current = computed;
+      }
+      res.end(JSON.stringify({ running: RUNNING, current, sessionStartedAt: SESSION_STARTED_AT, sessionTimeSec }));
       return;
     }
     if (req.url === '/debug/playlist') {
