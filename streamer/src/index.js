@@ -645,11 +645,26 @@ async function streamContinuous(items) {
   const abr = (process.env.STREAMER_ABR === 'true');
   let args;
   if (allNormalized && !needsEncode && abr) {
+    const MID_H = parseInt(process.env.ABR_MID_HEIGHT || '480', 10);
+    const MID_VB = process.env.ABR_MID_VBITRATE || '1200k';
+    const MID_AB = process.env.ABR_MID_ABITRATE || '128k';
     const LOW_H = parseInt(process.env.ABR_LOW_HEIGHT || '360', 10);
     const LOW_VB = process.env.ABR_LOW_VBITRATE || '700k';
     const LOW_AB = process.env.ABR_LOW_ABITRATE || '96k';
-    const bufsize = `${(parseInt(LOW_VB, 10) || 700) * 2}k`;
-    console.log(`==> Using COPY MODE + ABR (720p copy + ${LOW_H}p @ ${LOW_VB} encode)`);
+    // One downscaled + encoded rendition. Keyframes forced every 1s so its segments
+    // line up with the copied high variant for clean adaptive switching.
+    const encVariant = (h, vb, ab, suffix) => [
+      '-map', '0:v:0', '-map', '0:a:0?',
+      '-vf', `scale=-2:${h}`,
+      '-c:v', 'libx264', '-preset', 'veryfast', '-profile:v', 'main', '-pix_fmt', 'yuv420p',
+      '-b:v', vb, '-maxrate', vb, '-bufsize', `${(parseInt(vb, 10) || 700) * 2}k`,
+      '-g', String(CONFIG.FPS), '-keyint_min', String(CONFIG.FPS), '-sc_threshold', '0',
+      '-force_key_frames', 'expr:gte(t,n_forced*1)',
+      '-r', String(CONFIG.FPS),
+      '-c:a', 'aac', '-b:a', ab, '-ar', '48000', '-ac', '2',
+      '-flvflags', 'no_duration_filesize', '-f', 'flv', '-rtmp_live', 'live', `${target}_${suffix}`,
+    ];
+    console.log(`==> Using COPY MODE + ABR (720p copy + ${MID_H}p@${MID_VB} + ${LOW_H}p@${LOW_VB})`);
     args = [
       '-loglevel', 'info',
       '-re', '-f', 'concat', '-safe', '0', '-i', listPath,
@@ -657,17 +672,9 @@ async function streamContinuous(items) {
       '-map', '0:v:0', '-map', '0:a:0?',
       '-c:v', 'copy', '-c:a', 'copy',
       '-flvflags', 'no_duration_filesize', '-f', 'flv', '-rtmp_live', 'live', `${target}_high`,
-      // Variant "low": downscaled + encoded. Keyframes forced every 1s so segments line
-      // up with the copied variant for clean adaptive switching.
-      '-map', '0:v:0', '-map', '0:a:0?',
-      '-vf', `scale=-2:${LOW_H}`,
-      '-c:v', 'libx264', '-preset', 'veryfast', '-profile:v', 'main', '-pix_fmt', 'yuv420p',
-      '-b:v', LOW_VB, '-maxrate', LOW_VB, '-bufsize', bufsize,
-      '-g', String(CONFIG.FPS), '-keyint_min', String(CONFIG.FPS), '-sc_threshold', '0',
-      '-force_key_frames', 'expr:gte(t,n_forced*1)',
-      '-r', String(CONFIG.FPS),
-      '-c:a', 'aac', '-b:a', LOW_AB, '-ar', '48000', '-ac', '2',
-      '-flvflags', 'no_duration_filesize', '-f', 'flv', '-rtmp_live', 'live', `${target}_low`,
+      // Variants "mid" (480p) and "low" (360p), both encoded.
+      ...encVariant(MID_H, MID_VB, MID_AB, 'mid'),
+      ...encVariant(LOW_H, LOW_VB, LOW_AB, 'low'),
     ];
   } else if (allNormalized && !needsEncode) {
     // COPY MODE: All assets pre-normalized, just stream without re-encoding

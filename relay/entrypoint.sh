@@ -80,8 +80,9 @@ export RELAY_ON_PUBLISH
 RELAY_HLS_VARIANTS=""
 if [ "${RELAY_ABR:-}" = "true" ]; then
   RELAY_HLS_VARIANTS='hls_variant _high BANDWIDTH=2664000,RESOLUTION=1280x720,NAME="720p";
+      hls_variant _mid BANDWIDTH=1400000,RESOLUTION=854x480,NAME="480p";
       hls_variant _low BANDWIDTH=800000,RESOLUTION=640x360,NAME="360p";'
-  echo "==> ABR ENABLED (hls_variant _high + _low)"
+  echo "==> ABR ENABLED (hls_variant _high + _mid + _low)"
 else
   echo "==> ABR disabled (set RELAY_ABR=true to enable adaptive bitrate)"
 fi
