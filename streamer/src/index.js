@@ -766,16 +766,34 @@ async function streamContinuous(items) {
   // Record the play sequence + start time + which day it is so /status can report the
   // real current clip AND the exact schedule day (an asset can appear on several days).
   CONTINUOUS_STATE = { startedAt: Date.now(), sequence, slateBetweenSec: SLATE_BETWEEN_SEC, day: (process.env.STREAMER_DAY || dayName()) };
+  const buildDay = CONTINUOUS_STATE.day;
+  let dayReload = false;
   await new Promise((resolve, reject) => {
     CHILD = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
-    CHILD.on('error', (err) => { CONTINUOUS_STATE = null; console.error('ffmpeg continuous spawn error', err); reject(err); });
+    // Day-rollover watcher. The concat loops for days (1000x), but the schedule is
+    // per-weekday — so when the calendar day changes (and STREAMER_DAY isn't pinning
+    // it), stop this ffmpeg so the main loop rebuilds with the NEW day's playlist.
+    // Without this the streamer keeps looping whichever day it started on (e.g. it was
+    // still playing Friday's schedule on the following Tuesday, ~4 days later).
+    const dayWatch = setInterval(() => {
+      if (!process.env.STREAMER_DAY && RUNNING && dayName() !== buildDay) {
+        console.log(`==> Day rolled over (${buildDay} -> ${dayName()}); reloading playlist`);
+        dayReload = true;
+        clearInterval(dayWatch);
+        try { if (CHILD) CHILD.kill('SIGINT'); } catch {}
+      }
+    }, 60000);
+    CHILD.on('error', (err) => { clearInterval(dayWatch); CONTINUOUS_STATE = null; console.error('ffmpeg continuous spawn error', err); reject(err); });
     CHILD.stdout.on('data', (d) => process.stdout.write(d.toString()));
     CHILD.stderr.on('data', (d) => process.stderr.write(d.toString()));
     CHILD.on('exit', (code) => {
+      clearInterval(dayWatch);
       CHILD = null;
       CONTINUOUS_STATE = null;
       Promise.allSettled(toCleanup.map(f => fs.unlink(f))).then(() => fs.unlink(listPath).catch(() => {}));
-      if (code === 0) resolve(); else {
+      // A day-rollover kill is intentional: resolve so the main loop rebuilds cleanly
+      // with the new day instead of dropping into the sequential fallback.
+      if (dayReload || code === 0) resolve(); else {
         console.error('ffmpeg continuous exited with code', code);
         reject(new Error('continuous exit ' + code));
       }
