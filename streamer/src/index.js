@@ -17,7 +17,23 @@ async function getJSON(url, opts = {}) {
   return res.json();
 }
 
-function dayName(d = new Date()) { return ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d.getDay()]; }
+// Which weekday's schedule to play. The container has no TZ set, so d.getDay() resolves
+// in UTC — during BST that rolls the day over an hour after London does, and the streamer
+// spends that hour on yesterday's playlist while the CMS and the viewer-facing schedule
+// have already moved on. Set STREAMER_TZ=Europe/London on the service to align them.
+// Unset keeps the previous UTC behaviour, so deploying this alone changes nothing.
+const SCHEDULE_TZ = process.env.STREAMER_TZ || '';
+const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+function dayName(d = new Date()) {
+  if (SCHEDULE_TZ) {
+    try {
+      return new Intl.DateTimeFormat('en-US', { timeZone: SCHEDULE_TZ, weekday: 'long' }).format(d);
+    } catch (e) {
+      console.error(`==> invalid STREAMER_TZ "${SCHEDULE_TZ}", falling back to container time:`, e?.message || e);
+    }
+  }
+  return DAY_NAMES[d.getDay()];
+}
 
 async function playlist() {
   const override = process.env.STREAMER_DAY;
@@ -35,9 +51,7 @@ async function playlist() {
 }
 
 async function now() {
-  const today = new Date();
-  const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-  const day = days[today.getDay()];
+  const day = dayName();
   const u = `${CONFIG.API_BASE_URL}/feed/${encodeURIComponent(CONFIG.CHANNEL)}/${encodeURIComponent(CONFIG.WEEK)}/${day}/now`;
   return getJSON(u);
 }
@@ -308,12 +322,19 @@ const MAX_DOWNLOAD_BYTES = parseInt(process.env.STREAMER_MAX_DOWNLOAD_MB || '409
 async function downloadToTemp(url, ix, destPath) {
   assertSafeMediaInput(url);
   const tmp = destPath || path.join(os.tmpdir(), `ralphtv_${Date.now()}_${ix}.mp4`);
+  // Download to a sidecar, then rename into place. The continuous FAST PATH writes the
+  // concat list BEFORE these downloads finish, so ffmpeg can reach this path at any
+  // moment. Writing directly to it let ffmpeg open a half-written MP4 (truncated mdat,
+  // or a moov atom not yet flushed), which decodes to nothing — black output with no
+  // error logged. rename(2) is atomic within a filesystem, so ffmpeg now sees either no
+  // file at all or a complete one.
+  const part = `${tmp}.part`;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
   try {
     const res = await fetch(url, { signal: controller.signal });
     if (!res.ok || !res.body) throw new Error(`download failed ${res.status}`);
-    const file = await fs.open(tmp, 'w');
+    const file = await fs.open(part, 'w');
     const writer = file.createWriteStream();
     let bytes = 0;
     await new Promise((resolve, reject) => {
@@ -328,14 +349,39 @@ async function downloadToTemp(url, ix, destPath) {
       })).catch(reject);
     });
     await file.close();
+    await fs.rename(part, tmp);
     return tmp;
   } catch (e) {
     clearTimeout(timer);
-    try { await fs.unlink(tmp); } catch {} // don't leak a partial/aborted download
+    try { await fs.unlink(part); } catch {} // don't leak a partial/aborted download
     throw e;
   } finally {
     clearTimeout(timer);
   }
+}
+
+// Real playback duration of a local file, in seconds (null if it can't be read).
+// The scheduler's durationSec comes from upload-time metadata and can disagree with the
+// file we actually stream. computeContinuousCurrent() derives "what's on air now" purely
+// from those numbers, so any error accumulates across the loop and eventually names the
+// wrong show — the observed case being the schedule showing Eleanor Janega while Sapan
+// Verma was playing.
+async function probeDurationSec(filePath) {
+  return new Promise((resolve) => {
+    const p = spawn('ffprobe', [
+      '-v', 'error',
+      '-show_entries', 'format=duration',
+      '-of', 'default=noprint_wrappers=1:nokey=1',
+      filePath,
+    ], { stdio: ['ignore', 'pipe', 'pipe'] });
+    let out = '';
+    p.stdout.on('data', (d) => { out += d.toString(); });
+    p.on('error', () => resolve(null));
+    p.on('exit', (code) => {
+      const n = parseFloat(out.trim());
+      resolve(code === 0 && Number.isFinite(n) && n > 0 ? n : null);
+    });
+  });
 }
 
 async function normalizeToTemp(inPath, ix) {
@@ -549,8 +595,24 @@ async function buildContinuousList(items) {
   const sequence = specs.map(s => ({ assetId: s.assetId, durationSec: s.durationSec }));
 
   // Download (+optional normalize) one clip to its deterministic path.
+  // Retries: a single failure used to be caught by the background loop, logged, and
+  // skipped — leaving the concat list pointing at a file that never appears, so ffmpeg
+  // hit a missing input mid-playlist. Presigned URLs also expire (~10 min), which is the
+  // most likely failure for clips late in a long playlist, so re-resolve between tries.
+  const DOWNLOAD_ATTEMPTS = 3;
   const prepareClip = async (spec) => {
-    const dl = await downloadToTemp(spec.url, `cont_${spec.i}`, spec.path);
+    let dl = null, lastErr = null;
+    for (let attempt = 1; attempt <= DOWNLOAD_ATTEMPTS; attempt++) {
+      try { dl = await downloadToTemp(spec.url, `cont_${spec.i}`, spec.path); break; }
+      catch (e) {
+        lastErr = e;
+        if (attempt === DOWNLOAD_ATTEMPTS) break;
+        console.warn(`==> download attempt ${attempt}/${DOWNLOAD_ATTEMPTS} failed for ${spec.assetId}: ${e?.message || e}`);
+        await sleep(2000 * attempt);
+        try { spec.url = (await getAssetInfo(spec.assetId)).url; } catch {}
+      }
+    }
+    if (!dl) throw lastErr || new Error(`download failed for ${spec.assetId}`);
     toCleanup.push(dl); TEMP_FILES.push(dl);
     let nm = dl;
     if (NORMALIZE && !spec.isNorm) {
@@ -558,6 +620,18 @@ async function buildContinuousList(items) {
       toCleanup.push(nm); TEMP_FILES.push(nm);
     }
     spec.finalPath = nm;
+
+    // Trust the file over the scheduler's metadata, so the /status pointer tracks what
+    // is genuinely on air rather than drifting a little further out with every clip.
+    const real = await probeDurationSec(nm);
+    if (real) {
+      const scheduled = spec.durationSec || 0;
+      if (scheduled && Math.abs(real - scheduled) > 2) {
+        console.warn(`==> duration mismatch ${spec.assetId}: scheduled ${scheduled}s vs actual ${Math.round(real)}s — using actual`);
+      }
+      spec.durationSec = real;
+      if (sequence[spec.i]) sequence[spec.i].durationSec = real;
+    }
   };
 
   if (allNormalized) {
@@ -783,11 +857,27 @@ async function streamContinuous(items) {
         try { if (CHILD) CHILD.kill('SIGINT'); } catch {}
       }
     }, 60000);
-    CHILD.on('error', (err) => { clearInterval(dayWatch); CONTINUOUS_STATE = null; console.error('ffmpeg continuous spawn error', err); reject(err); });
+    // Name the clip that is on air, every time it changes. ffmpeg's own per-clip marker
+    // is "Auto-inserting h264_mp4toannexb bitstream filter", which tells you a new file
+    // opened but not which asset — so a stretch of blank output (encoder q collapsing to
+    // 0 with the file size flat) could not be attributed to a specific show. With this,
+    // a dead-air window in the logs maps straight to an asset ID.
+    let lastLoggedIndex = -1;
+    const clipWatch = setInterval(() => {
+      if (!CONTINUOUS_STATE) return;
+      const cur = computeContinuousCurrent(CONTINUOUS_STATE);
+      if (cur && cur.index !== lastLoggedIndex) {
+        lastLoggedIndex = cur.index;
+        const secs = Math.round(sequence[cur.index]?.durationSec || 0);
+        console.log(`==> ON AIR [${cur.index + 1}/${sequence.length}] ${cur.assetId} (${secs}s)`);
+      }
+    }, 5000);
+    const stopWatches = () => { clearInterval(dayWatch); clearInterval(clipWatch); };
+    CHILD.on('error', (err) => { stopWatches(); CONTINUOUS_STATE = null; console.error('ffmpeg continuous spawn error', err); reject(err); });
     CHILD.stdout.on('data', (d) => process.stdout.write(d.toString()));
     CHILD.stderr.on('data', (d) => process.stderr.write(d.toString()));
     CHILD.on('exit', (code) => {
-      clearInterval(dayWatch);
+      stopWatches();
       CHILD = null;
       CONTINUOUS_STATE = null;
       Promise.allSettled(toCleanup.map(f => fs.unlink(f))).then(() => fs.unlink(listPath).catch(() => {}));
