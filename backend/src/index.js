@@ -1285,35 +1285,6 @@ function streamerAuthHeaders() {
   return STREAMER_CONTROL_TOKEN ? { Authorization: `Bearer ${STREAMER_CONTROL_TOKEN}` } : {};
 }
 
-// Instagram Live control. Proxied through the backend rather than called from the
-// browser, so the streamer's control token stays server-side and the Instagram stream
-// key never lands in client JS. The key is forwarded straight through — never stored,
-// never logged.
-app.post('/streamer/instagram/:action', authMiddleware, requireWrite, async (req, res) => {
-  if (!STREAMER_BASE_URL) return res.status(501).json({ message: 'STREAMER_URL not configured' });
-  const { action } = req.params;
-  if (action !== 'start' && action !== 'stop') return res.status(404).json({ message: 'Unknown action' });
-  try {
-    const r = await fetch(`${STREAMER_BASE_URL}/control/instagram/${action}`, {
-      method: 'POST',
-      headers: { ...streamerAuthHeaders(), 'Content-Type': 'application/json' },
-      body: action === 'start'
-        ? JSON.stringify({
-            streamKey: req.body?.streamKey,
-            layout: req.body?.layout,
-            ingestUrl: req.body?.ingestUrl,
-          })
-        : undefined,
-      signal: AbortSignal.timeout(15000),
-    });
-    const body = await r.text();
-    return res.status(r.status).type('application/json').send(body || '{}');
-  } catch (e) {
-    console.error('instagram control proxy error', e?.message || e);
-    return res.status(502).json({ message: 'Streamer unreachable' });
-  }
-});
-
 app.post('/streamer/control/:action', authMiddleware, requireWrite, async (req, res) => {
   if (!STREAMER_BASE_URL) return res.status(501).json({ message: 'STREAMER_URL not configured' });
   const { action } = req.params;
