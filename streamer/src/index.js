@@ -891,6 +891,135 @@ async function streamContinuous(items) {
   });
 }
 
+// ---- Instagram Live bridge --------------------------------------------------
+// Pulls the live feed back off the relay, reframes it to vertical 9:16 and pushes it
+// to Instagram over RTMPS (nginx-rtmp's `push` can't do TLS, but ffmpeg can — this
+// image is built --enable-gnutls).
+//
+// Deliberately independent of the playlist loop: its own child handle, its own
+// lifecycle. cleanupStreamer()/Stop/Restart must never kill an in-progress Instagram
+// broadcast, and an Instagram failure must never disturb the channel.
+const IG_INGEST_DEFAULT = process.env.IG_INGEST_URL || 'rtmps://live-upload.instagram.com:443/rtmp/';
+const IG_W = parseInt(process.env.IG_WIDTH || '1080', 10);
+const IG_H = parseInt(process.env.IG_HEIGHT || '1920', 10);
+const IG_VBIT = process.env.IG_VIDEO_BITRATE || '3500k';
+const IG_ABIT = process.env.IG_AUDIO_BITRATE || '128k';
+const IG_LAYOUT_DEFAULT = process.env.IG_LAYOUT || 'blur';
+// Safety net: a forgotten broadcast stops itself (Instagram caps session length anyway).
+const IG_MAX_MIN = parseInt(process.env.IG_MAX_MINUTES || '240', 10);
+
+let IG_CHILD = null;
+let IG_STATE = null;   // { startedAt, layout, attempts }
+let IG_STOPPING = false;
+let IG_TIMER = null;
+
+// 16:9 source -> 9:16 frame. 'blur' centres the video over a zoomed, blurred copy of
+// itself (the standard social treatment); 'pad' uses black bars; 'crop' fills the
+// frame but throws away the sides.
+function igVideoFilter(layout) {
+  if (layout === 'pad') return `scale=${IG_W}:-2,pad=${IG_W}:${IG_H}:(ow-iw)/2:(oh-ih)/2:color=black`;
+  if (layout === 'crop') return `scale=-2:${IG_H},crop=${IG_W}:${IG_H}`;
+  return `split=2[bg][fg];[bg]scale=${IG_W}:${IG_H}:force_original_aspect_ratio=increase,` +
+    `crop=${IG_W}:${IG_H},gblur=sigma=20[bgb];[fg]scale=${IG_W}:-2[fgs];` +
+    `[bgb][fgs]overlay=(W-w)/2:(H-h)/2`;
+}
+
+function igArgs(sourceUrl, destUrl, layout) {
+  const fps = CONFIG.FPS;
+  return [
+    '-hide_banner', '-loglevel', 'warning',
+    '-i', sourceUrl,
+    '-vf', igVideoFilter(layout),
+    '-c:v', 'libx264', '-preset', 'veryfast', '-profile:v', 'high', '-pix_fmt', 'yuv420p',
+    '-b:v', IG_VBIT, '-maxrate', IG_VBIT, '-bufsize', `${(parseInt(IG_VBIT, 10) || 3500) * 2}k`,
+    '-g', String(fps * 2), '-keyint_min', String(fps * 2), '-sc_threshold', '0',
+    '-r', String(fps),
+    '-c:a', 'aac', '-b:a', IG_ABIT, '-ar', '48000', '-ac', '2',
+    '-f', 'flv', destUrl,
+  ];
+}
+
+function igSpawn(sourceUrl, destUrl, layout, streamKey) {
+  // The stream key is a secret: never let it reach Railway logs, including via
+  // ffmpeg's own output.
+  const scrub = (s) => String(s).split(streamKey).join('***');
+  const args = igArgs(sourceUrl, destUrl, layout);
+  console.log('==> [instagram] ffmpeg', scrub(args.join(' ')));
+  const child = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  IG_CHILD = child;
+  child.stdout.on('data', (d) => process.stdout.write(`[instagram] ${scrub(d.toString())}`));
+  child.stderr.on('data', (d) => process.stderr.write(`[instagram] ${scrub(d.toString())}`));
+  child.on('error', (e) => console.error('==> [instagram] spawn error', scrub(e?.message || e)));
+  child.on('exit', (code, sig) => {
+    IG_CHILD = null;
+    if (IG_STOPPING || !IG_STATE) { console.log('==> [instagram] push stopped'); IG_STATE = null; return; }
+    // Unexpected exit mid-broadcast: retry with backoff so a network blip doesn't end
+    // the event. Gives up after 5 tries rather than hammering Instagram forever.
+    const attempts = (IG_STATE.attempts || 0) + 1;
+    if (attempts > 5) {
+      console.error('==> [instagram] giving up after 5 failed attempts');
+      IG_STATE = null;
+      return;
+    }
+    IG_STATE.attempts = attempts;
+    const delay = Math.min(2000 * Math.pow(2, attempts - 1), 30000);
+    console.error(`==> [instagram] ffmpeg exited (code=${code} sig=${sig}); retry ${attempts}/5 in ${delay}ms`);
+    setTimeout(() => { if (!IG_STOPPING && IG_STATE) igSpawn(sourceUrl, destUrl, layout, streamKey); }, delay);
+  });
+}
+
+function startInstagram({ streamKey, ingestUrl, layout }) {
+  if (IG_CHILD) throw new Error('instagram push already running');
+  const base = ingestUrl || IG_INGEST_DEFAULT;
+  const destUrl = base.endsWith('/') ? `${base}${streamKey}` : `${base}/${streamKey}`;
+  // Read the live feed back off the relay — works whether the channel or an OBS
+  // event feed is currently publishing to that key.
+  const sourceUrl = process.env.IG_SOURCE_URL || CONFIG.RTMP_TARGET;
+  if (!sourceUrl) throw new Error('no source URL (set IG_SOURCE_URL or RTMP_TARGET)');
+  IG_STOPPING = false;
+  IG_STATE = { startedAt: Date.now(), layout, attempts: 0 };
+  igSpawn(sourceUrl, destUrl, layout, streamKey);
+  if (IG_MAX_MIN > 0) {
+    IG_TIMER = setTimeout(() => {
+      console.log(`==> [instagram] max duration (${IG_MAX_MIN}m) reached; stopping`);
+      stopInstagram();
+    }, IG_MAX_MIN * 60000);
+  }
+}
+
+async function stopInstagram() {
+  IG_STOPPING = true;
+  if (IG_TIMER) { clearTimeout(IG_TIMER); IG_TIMER = null; }
+  const child = IG_CHILD;
+  if (child && child.exitCode === null) {
+    await new Promise((resolve) => {
+      const killTimer = setTimeout(() => { try { child.kill('SIGKILL'); } catch {} }, 5000);
+      child.once('exit', () => { clearTimeout(killTimer); resolve(); });
+      try { child.kill('SIGINT'); } catch { clearTimeout(killTimer); resolve(); }
+    });
+  }
+  IG_CHILD = null;
+  IG_STATE = null;
+}
+
+// Small JSON body reader (the streamer uses raw http, and the other control
+// endpoints take no body). Capped so a large POST can't balloon memory.
+function readJsonBody(req, maxBytes = 8192) {
+  return new Promise((resolve, reject) => {
+    let data = '';
+    let size = 0;
+    req.on('data', (c) => {
+      size += c.length;
+      if (size > maxBytes) { reject(new Error('body too large')); req.destroy(); return; }
+      data += c;
+    });
+    req.on('end', () => {
+      try { resolve(data ? JSON.parse(data) : {}); } catch { reject(new Error('invalid JSON body')); }
+    });
+    req.on('error', reject);
+  });
+}
+
 async function main() {
   if (!CONFIG.API_BASE_URL || !CONFIG.RTMP_TARGET) {
     console.error('Missing API_BASE_URL or RTMP_TARGET');
@@ -963,7 +1092,12 @@ async function main() {
         const computed = computeContinuousCurrent(CONTINUOUS_STATE);
         if (computed) current = computed;
       }
-      res.end(JSON.stringify({ running: RUNNING, current, sessionStartedAt: SESSION_STARTED_AT, sessionTimeSec }));
+      // Instagram push state — non-sensitive fields only (never the stream key).
+      const instagram = IG_STATE
+        ? { running: !!IG_CHILD, layout: IG_STATE.layout, startedAt: IG_STATE.startedAt,
+            elapsedSec: Math.floor((Date.now() - IG_STATE.startedAt) / 1000) }
+        : { running: false };
+      res.end(JSON.stringify({ running: RUNNING, current, sessionStartedAt: SESSION_STARTED_AT, sessionTimeSec, instagram }));
       return;
     }
     if (req.url === '/debug/playlist') {
@@ -1009,6 +1143,33 @@ async function main() {
     if (req.url === '/control/start' && req.method === 'POST') {
       RUNNING = true;
       if (!SESSION_STARTED_AT) SESSION_STARTED_AT = Date.now();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+
+    // Instagram Live: start/stop an RTMPS push of the current feed, reframed to 9:16.
+    // The stream key is supplied per broadcast (Instagram issues a new one each time)
+    // so no redeploy is needed — and it is never persisted or logged.
+    if (req.url === '/control/instagram/start' && req.method === 'POST') {
+      try {
+        const body = await readJsonBody(req);
+        const streamKey = String(body.streamKey || '').trim();
+        if (!/^[A-Za-z0-9._~%=-]{4,500}$/.test(streamKey)) throw new Error('invalid or missing streamKey');
+        const layout = ['blur', 'pad', 'crop'].includes(body.layout) ? body.layout : IG_LAYOUT_DEFAULT;
+        const ingestUrl = body.ingestUrl ? String(body.ingestUrl) : IG_INGEST_DEFAULT;
+        if (!/^rtmps?:\/\/[A-Za-z0-9._~:/?=&%@-]+$/.test(ingestUrl)) throw new Error('invalid ingestUrl');
+        startInstagram({ streamKey, ingestUrl, layout });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, layout }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: String(e?.message || e) }));
+      }
+      return;
+    }
+    if (req.url === '/control/instagram/stop' && req.method === 'POST') {
+      await stopInstagram();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true }));
       return;
@@ -1214,6 +1375,7 @@ async function main() {
 process.on('SIGINT', async () => {
   console.log('\n==> Received SIGINT, cleaning up...');
   RUNNING = false;
+  await stopInstagram();
   await cleanupStreamer();
   process.exit(0);
 });
@@ -1221,6 +1383,7 @@ process.on('SIGINT', async () => {
 process.on('SIGTERM', async () => {
   console.log('\n==> Received SIGTERM, cleaning up...');
   RUNNING = false;
+  await stopInstagram();
   await cleanupStreamer();
   process.exit(0);
 });
