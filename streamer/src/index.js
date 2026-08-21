@@ -891,6 +891,39 @@ async function streamContinuous(items) {
   });
 }
 
+// Restore the channel's desired run state after a restart.
+//
+// RUNNING lives only in memory, so any container restart — and Railway redeploys on
+// every push to main — reset it to false and left a 24/7 channel dark until someone
+// noticed and clicked Start. Ask the backend what the last control action was and
+// resume if the channel is meant to be live.
+//
+// Deliberately fail-safe: never throws, never blocks startup for long. If the backend
+// is unreachable at boot we fall back to STREAMER_AUTOSTART (default false = today's
+// behaviour) rather than guessing.
+async function restoreDesiredState() {
+  if (process.env.STREAMER_RESUME === 'false') {
+    console.log('==> Resume-after-restart disabled (STREAMER_RESUME=false)');
+    return;
+  }
+  try {
+    const d = await getJSON(`${CONFIG.API_BASE_URL}/streamer/desired-state`, {
+      signal: AbortSignal.timeout(8000),
+    });
+    if (d?.running) {
+      RUNNING = true;
+      SESSION_STARTED_AT = Date.now();
+      console.log(`==> Resuming channel after restart (last action: ${d.lastAction})`);
+    } else {
+      console.log(`==> Channel left idle after restart (last action: ${d?.lastAction ?? 'none'})`);
+    }
+  } catch (e) {
+    const fallback = process.env.STREAMER_AUTOSTART === 'true';
+    RUNNING = fallback;
+    console.error(`==> Could not read desired state (${e?.message || e}); autostart fallback=${fallback}`);
+  }
+}
+
 async function main() {
   if (!CONFIG.API_BASE_URL || !CONFIG.RTMP_TARGET) {
     console.error('Missing API_BASE_URL or RTMP_TARGET');
@@ -1049,6 +1082,9 @@ async function main() {
   server.listen(port, () => console.log(`Streamer health on :${port}`));
 
   // Loop forever
+  // Pick the channel back up if it was live before this restart.
+  await restoreDesiredState();
+
   // At start of each cycle, compute pointer and decide list
   let errCount = 0;
   for (;;) {

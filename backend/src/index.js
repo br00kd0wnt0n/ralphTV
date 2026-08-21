@@ -1285,6 +1285,23 @@ function streamerAuthHeaders() {
   return STREAMER_CONTROL_TOKEN ? { Authorization: `Bearer ${STREAMER_CONTROL_TOKEN}` } : {};
 }
 
+// Desired run state for the channel, derived from the most recent control action.
+// The streamer reads this at boot: its RUNNING flag is in-memory only, so a restart
+// (Railway redeploys on every push) would otherwise leave a 24/7 channel dark until
+// someone manually pressed Start.
+app.get('/streamer/desired-state', authMiddleware, async (_req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'select action from stream_actions order by created_at desc limit 1'
+    );
+    const lastAction = rows[0]?.action || null;
+    return res.json({ running: lastAction === 'start' || lastAction === 'restart', lastAction });
+  } catch (e) {
+    console.error('desired-state error', e?.message || e);
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
+
 app.post('/streamer/control/:action', authMiddleware, requireWrite, async (req, res) => {
   if (!STREAMER_BASE_URL) return res.status(501).json({ message: 'STREAMER_URL not configured' });
   const { action } = req.params;
@@ -1301,6 +1318,15 @@ app.post('/streamer/control/:action', authMiddleware, requireWrite, async (req, 
       signal: AbortSignal.timeout(8000),
     });
     const body = await r.text();
+    // Record the action here rather than trusting the caller to also hit
+    // /stream-actions/log — this proxy is the one path every Start/Stop goes through,
+    // so logging it makes /streamer/desired-state accurate however control was invoked.
+    // Fire-and-forget: a logging failure must never fail the control call.
+    if (r.ok && ['start', 'stop', 'restart'].includes(action)) {
+      pool.query('insert into stream_actions (action, user_email) values ($1, $2)',
+        [action, req.user?.email || 'system'])
+        .catch((e) => console.error('stream action log error', e?.message || e));
+    }
     return res.status(r.status).type('application/json').send(body || '{}');
   } catch (e) {
     console.error('streamer control proxy error', e?.message || e);
