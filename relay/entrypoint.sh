@@ -77,6 +77,22 @@ export RELAY_ON_PUBLISH
 # ABR variants (opt-in). When RELAY_ABR=true, declare the two renditions the streamer
 # publishes (stream_high / stream_low) so nginx-rtmp builds a master playlist. Empty
 # otherwise, preserving single-rendition behaviour.
+# IPv6 listeners (opt-in). Railway's private network is IPv6-only, so these are what
+# make rtmp://relay.railway.internal reachable — which takes the streamer's 24/7 push
+# off the billed public path. Kept opt-in so a deploy changes nothing until enabled,
+# and can be switched straight back off if nginx-rtmp rejects the bind.
+RELAY_LISTEN6_RTMP=""
+RELAY_LISTEN6_HTTP=""
+if [ "${RELAY_IPV6:-}" = "true" ]; then
+  RELAY_LISTEN6_RTMP="listen [::]:${RELAY_RTMP_PORT};"
+  RELAY_LISTEN6_HTTP="listen [::]:${RELAY_HTTP_PORT};"
+  echo "==> IPv6 listeners ENABLED (private networking: relay.railway.internal)"
+else
+  echo "==> IPv6 listeners disabled (set RELAY_IPV6=true for Railway private networking)"
+fi
+export RELAY_LISTEN6_RTMP
+export RELAY_LISTEN6_HTTP
+
 RELAY_HLS_VARIANTS=""
 if [ "${RELAY_ABR:-}" = "true" ]; then
   RELAY_HLS_VARIANTS='hls_variant _high BANDWIDTH=2664000,RESOLUTION=1280x720,NAME="720p";
@@ -109,7 +125,7 @@ echo "==> RELAY_HTTP_PORT=${RELAY_HTTP_PORT}"
 echo "==> RELAY_RTMP_PORT=${RELAY_RTMP_PORT}"
 echo "==> NGINX_WORKER_PROCESSES=${NGINX_WORKER_PROCESSES}"
 # Only substitute our variables, not nginx variables like $request_method
-envsubst '${NGINX_WORKER_PROCESSES} ${RELAY_RTMP_PORT} ${RELAY_PUSH_LINES} ${RELAY_ON_PUBLISH} ${RELAY_HTTP_PORT} ${RELAY_HLS_VARIANTS}' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
+envsubst '${NGINX_WORKER_PROCESSES} ${RELAY_RTMP_PORT} ${RELAY_PUSH_LINES} ${RELAY_ON_PUBLISH} ${RELAY_HTTP_PORT} ${RELAY_HLS_VARIANTS} ${RELAY_LISTEN6_RTMP} ${RELAY_LISTEN6_HTTP}' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
 
 echo "==> Generated config:"
 cat /etc/nginx/nginx.conf

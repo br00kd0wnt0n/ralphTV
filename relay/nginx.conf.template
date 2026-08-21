@@ -8,6 +8,11 @@ events { worker_connections 1024; }
 rtmp {
   server {
     listen ${RELAY_RTMP_PORT};
+    # Railway's private network is IPv6-only. Listening on IPv6 as well lets the
+    # streamer publish over relay.railway.internal instead of the public TCP proxy —
+    # the public path bills every byte as egress (~1.5 TB/month for 24/7 ABR) even
+    # though both services sit in the same project. Populated only when RELAY_IPV6=true.
+    ${RELAY_LISTEN6_RTMP}
     chunk_size 4096;
     access_log /dev/stdout;
 
@@ -56,6 +61,9 @@ http {
 
   server {
     listen ${RELAY_HTTP_PORT};
+    # IPv6 so the backend's status/destination polling can also use the private
+    # network. Populated only when RELAY_IPV6=true.
+    ${RELAY_LISTEN6_HTTP}
     server_name _;
 
     # Global CORS headers (applied to all responses including errors)
