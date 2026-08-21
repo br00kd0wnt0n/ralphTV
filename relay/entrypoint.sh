@@ -84,7 +84,11 @@ export RELAY_ON_PUBLISH
 RELAY_LISTEN6_RTMP=""
 RELAY_LISTEN6_HTTP=""
 if [ "${RELAY_IPV6:-}" = "true" ]; then
-  RELAY_LISTEN6_RTMP="listen [::]:${RELAY_RTMP_PORT};"
+  # ipv6only=on is REQUIRED here. Unlike nginx's http listen (which defaults to
+  # ipv6only=on), nginx-rtmp's listen creates a dual-stack socket by default, so
+  # [::]:1935 also claims 0.0.0.0:1935 and collides with the IPv4 listen above —
+  # nginx passes `nginx -t` and then crash-loops on "Address already in use".
+  RELAY_LISTEN6_RTMP="listen [::]:${RELAY_RTMP_PORT} ipv6only=on;"
   RELAY_LISTEN6_HTTP="listen [::]:${RELAY_HTTP_PORT};"
   echo "==> IPv6 listeners ENABLED (private networking: relay.railway.internal)"
 else
