@@ -20,6 +20,17 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
   const [volume, setVolume] = useState(0.7);
   const [playerStatus, setPlayerStatus] = useState<'idle' | 'initializing' | 'loading' | 'playing' | 'buffering' | 'error' | 'unstable'>('idle');
   const [statusMessage, setStatusMessage] = useState<string>('');
+  // Idle suspend: an admin tab left open pulls HLS segments 24/7 — roughly 22 GB/day
+  // of Railway origin egress plus the matching Bunny CDN bandwidth, for nobody
+  // watching. Two tiers, because a flat inactivity timer would eject someone who is
+  // deliberately watching the output without touching the mouse:
+  //   - tab hidden        -> suspend quickly (nobody is watching a background tab)
+  //   - visible but idle  -> suspend only after a long window, with a resume prompt
+  const [suspended, setSuspended] = useState(false);
+  const suspendedRef = useRef(false);
+  suspendedRef.current = suspended;
+  const HIDDEN_SUSPEND_MS = parseInt(import.meta.env.VITE_PREVIEW_HIDDEN_SUSPEND_MS || '60000', 10);
+  const IDLE_SUSPEND_MS = parseInt(import.meta.env.VITE_PREVIEW_IDLE_SUSPEND_MS || '1800000', 10);
   const checkIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const retryCountRef = useRef(0);
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -102,9 +113,46 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
     };
   }, [isPlaying, relayAvailable]);
 
+  // Watch for the tab going idle/hidden and suspend playback (see note by `suspended`).
+  // Resuming happens either by clicking the overlay or by returning to the tab.
+  useEffect(() => {
+    if (!streaming) return;
+    let idleTimer: ReturnType<typeof setTimeout> | undefined;
+    let hiddenTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const armIdle = () => {
+      clearTimeout(idleTimer);
+      if (document.hidden || suspendedRef.current) return;
+      idleTimer = setTimeout(() => setSuspended(true), IDLE_SUSPEND_MS);
+    };
+    const onActivity = () => armIdle();
+    const onVisibility = () => {
+      clearTimeout(hiddenTimer);
+      if (document.hidden) {
+        hiddenTimer = setTimeout(() => setSuspended(true), HIDDEN_SUSPEND_MS);
+      } else {
+        // Coming back to the tab is an unambiguous "I want to watch" signal.
+        setSuspended(false);
+        armIdle();
+      }
+    };
+
+    const events: Array<keyof WindowEventMap> = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'wheel'];
+    events.forEach((e) => window.addEventListener(e, onActivity, { passive: true }));
+    document.addEventListener('visibilitychange', onVisibility);
+    onVisibility(); // arm for the current state
+
+    return () => {
+      clearTimeout(idleTimer);
+      clearTimeout(hiddenTimer);
+      events.forEach((e) => window.removeEventListener(e, onActivity));
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [streaming, HIDDEN_SUSPEND_MS, IDLE_SUSPEND_MS]);
+
   // Load and play stream when streaming becomes active
   useEffect(() => {
-    if (!CONFIG.RELAY_BASE_URL || !streaming || !relayAvailable) {
+    if (!CONFIG.RELAY_BASE_URL || !streaming || !relayAvailable || suspended) {
       // Clean up existing HLS instance if stream stopped
       if (hlsRef.current) {
         hlsRef.current.destroy();
@@ -356,7 +404,7 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
         hlsRef.current = null;
       }
     };
-  }, [streaming, relayAvailable]);
+  }, [streaming, relayAvailable, suspended]);
 
   // Always show player container, even if relay unavailable (show status instead)
 
@@ -386,7 +434,25 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
         )}
       </div>
 
-      <div className="hls-player-video">
+      <div className="hls-player-video" style={{ position: 'relative' }}>
+        {suspended && streaming && (
+          <div
+            onClick={() => setSuspended(false)}
+            title="Preview paused to save bandwidth"
+            style={{
+              position: 'absolute', inset: 0, zIndex: 5, cursor: 'pointer',
+              display: 'flex', flexDirection: 'column', gap: 6,
+              alignItems: 'center', justifyContent: 'center',
+              background: 'rgba(0,0,0,0.72)', color: '#fff', textAlign: 'center',
+            }}
+          >
+            <div style={{ fontSize: 13, fontWeight: 600 }}>Preview paused</div>
+            <div style={{ fontSize: 11, opacity: 0.75, maxWidth: 260 }}>
+              Stopped to save bandwidth. The channel is still live.
+            </div>
+            <div style={{ fontSize: 11, marginTop: 4, textDecoration: 'underline' }}>Click to resume</div>
+          </div>
+        )}
         <video
           ref={videoRef}
           muted={muted}
