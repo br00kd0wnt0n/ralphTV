@@ -1,13 +1,14 @@
-FROM node:20-bullseye-slim
+FROM node:20-bookworm-slim
 WORKDIR /app
 
-# -o Acquire::Check-Valid-Until=false: Debian bullseye-security's signed Release file
-# has passed its freshness window (bullseye is past standard security support), so apt
-# refuses it as "expired" even though the signature itself is still valid. This flag
-# only skips the staleness check, not GPG verification. Fixes builds broken by this;
-# does not change what gets installed. Longer-term: migrate off bullseye to bookworm.
-RUN sed -i 's|deb.debian.org/debian-security|archive.debian.org/debian-security|g' /etc/apt/sources.list && \
-    apt-get update -o Acquire::Check-Valid-Until=false && \
+# Was node:20-bullseye-slim. bullseye-security's actual package files are gone from
+# every live Debian mirror (deb.debian.org, security.debian.org) and not yet present
+# in the permanent archive.debian.org archive either — verified directly, no apt-source
+# patch fixes this, the suite is unreachable everywhere. bookworm's mirrors are fully
+# live, so apt needs no special flags here. Bumps ffmpeg 4.3.9 -> 5.1.9 (bookworm's
+# packaged version); the encode flags used in this codebase are long-stable across
+# ffmpeg versions.
+RUN apt-get update && \
     apt-get install -y --no-install-recommends ffmpeg ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 

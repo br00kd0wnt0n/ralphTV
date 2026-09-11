@@ -1,13 +1,12 @@
-FROM debian:bullseye-slim
+FROM debian:bookworm-slim
 WORKDIR /app
 
-# -o Acquire::Check-Valid-Until=false: Debian bullseye-security's signed Release file
-# has passed its freshness window (bullseye is past standard security support), so apt
-# refuses it as "expired" even though the signature itself is still valid. This flag
-# only skips the staleness check, not GPG verification. Fixes builds broken by this;
-# does not change what gets installed. Longer-term: migrate off bullseye to bookworm.
-RUN sed -i 's|deb.debian.org/debian-security|archive.debian.org/debian-security|g' /etc/apt/sources.list && \
-    apt-get update -o Acquire::Check-Valid-Until=false && \
+# Was debian:bullseye-slim. bullseye-security's actual package files are gone from
+# every live Debian mirror (deb.debian.org, security.debian.org) and not yet present
+# in the permanent archive.debian.org archive either — verified directly, no apt-source
+# patch fixes this, the suite is unreachable everywhere. bookworm's mirrors are fully
+# live, so apt needs no special flags here.
+RUN apt-get update && \
     apt-get install -y --no-install-recommends nginx libnginx-mod-rtmp ca-certificates gettext-base && \
     rm -rf /var/lib/apt/lists/*
 
