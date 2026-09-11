@@ -1,7 +1,12 @@
 FROM debian:bullseye-slim
 WORKDIR /app
 
-RUN apt-get update && \
+# -o Acquire::Check-Valid-Until=false: Debian bullseye-security's signed Release file
+# has passed its freshness window (bullseye is past standard security support), so apt
+# refuses it as "expired" even though the signature itself is still valid. This flag
+# only skips the staleness check, not GPG verification. Fixes builds broken by this;
+# does not change what gets installed. Longer-term: migrate off bullseye to bookworm.
+RUN apt-get update -o Acquire::Check-Valid-Until=false && \
     apt-get install -y --no-install-recommends nginx libnginx-mod-rtmp ca-certificates gettext-base && \
     rm -rf /var/lib/apt/lists/*
 
