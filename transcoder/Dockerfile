@@ -6,7 +6,8 @@ WORKDIR /app
 # refuses it as "expired" even though the signature itself is still valid. This flag
 # only skips the staleness check, not GPG verification. Fixes builds broken by this;
 # does not change what gets installed. Longer-term: migrate off bullseye to bookworm.
-RUN apt-get update -o Acquire::Check-Valid-Until=false && \
+RUN sed -i 's|deb.debian.org/debian-security|archive.debian.org/debian-security|g' /etc/apt/sources.list && \
+    apt-get update -o Acquire::Check-Valid-Until=false && \
     apt-get install -y --no-install-recommends ffmpeg ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
