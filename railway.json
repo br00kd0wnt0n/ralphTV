@@ -3,15 +3,17 @@
   "build": {
     "builder": "NIXPACKS",
     "watchPatterns": [
-      "/**",
-      "!/backend/**",
-      "!/streamer/**",
-      "!/transcoder/**",
-      "!/relay/**",
-      "!/docs/**",
-      "!/scripts/**",
-      "!/.claude/**",
-      "!/*.md"
+      "/src/**",
+      "/public/**",
+      "/index.html",
+      "/package.json",
+      "/package-lock.json",
+      "/vite.config.ts",
+      "/tsconfig.json",
+      "/tsconfig.node.json",
+      "/nixpacks.toml",
+      "/railway.json",
+      "/.npmrc"
     ]
   },
   "deploy": {

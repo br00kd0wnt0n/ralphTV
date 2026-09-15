@@ -61,9 +61,13 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
     checkHealth();
   }, []);
 
-  // Check relay status periodically
+  // Check relay status periodically.
+  // Keep polling even while the relay is unavailable: this effect used to bail out
+  // when `relayAvailable` was false, which cleared its own interval — so a relay
+  // restart (every relay deploy, ~20s) latched the preview on the offline card until
+  // a page refresh. Nothing else ever set `relayAvailable` back to true.
   useEffect(() => {
-    if (!CONFIG.RELAY_BASE_URL || !relayAvailable) {
+    if (!CONFIG.RELAY_BASE_URL) {
       return;
     }
 
@@ -78,6 +82,7 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
           setError(null); // Suppress error display
           return;
         }
+        setRelayAvailable(true); // recovered (or never down) — re-arms the player
         setStreaming(status.streaming);
         if (!status.streaming && isPlaying) {
           // Stream stopped, pause video
@@ -100,7 +105,7 @@ export default function HlsPlayer({ onVideoReady }: HlsPlayerProps) {
         clearInterval(checkIntervalRef.current);
       }
     };
-  }, [isPlaying, relayAvailable]);
+  }, [isPlaying]);
 
   // Load and play stream when streaming becomes active
   useEffect(() => {
