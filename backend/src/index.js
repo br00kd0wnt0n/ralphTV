@@ -563,7 +563,7 @@ app.get('/assets', authMiddleware, async (req, res) => {
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 1000, 1), 2000);
     const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
     const { rows } = await pool.query(`
-      select a.id, a.file_name, a.mime_type, a.size, a.s3_key, a.file_type, a.uploaded_at, a.vimeo_reference, a.duration_sec, a.thumbnail_url, a.category_id, a.norm_status, a.s3_key_norm, a.description,
+      select a.id, a.file_name, a.mime_type, a.size, a.s3_key, a.file_type, a.uploaded_at, a.vimeo_reference, a.duration_sec, a.thumbnail_url, a.category_id, a.norm_status, a.s3_key_norm, a.description, a.src_width, a.src_height,
              coalesce(array_agg(t.name) filter (where t.name is not null), '{}') as tags
       from assets a
       left join asset_tags at on at.asset_id = a.id
@@ -1388,6 +1388,12 @@ const NP_CHANNEL = process.env.DEFAULT_CHANNEL || 'default';
 const NP_WEEK = process.env.DEFAULT_WEEK || 'current';
 function toShow(row, offsetSec, day) {
   if (!row) return null;
+  // Source dimensions (rotation-aware, probed by the transcoder). Portrait clips are
+  // pillarboxed into the 16:9 frame at transcode; `aspect` lets players zoom to the
+  // strip on phones. null when not probed yet (backfill pending).
+  const w = row.src_width != null ? Number(row.src_width) : null;
+  const h = row.src_height != null ? Number(row.src_height) : null;
+  const aspect = w && h ? (h > w ? 'portrait' : 'landscape') : null;
   return {
     assetId: row.id,
     showName: stripExtension(row.file_name || ''),
@@ -1396,6 +1402,9 @@ function toShow(row, offsetSec, day) {
     durationSec: row.duration_sec != null ? Number(row.duration_sec) : null,
     offsetSec: offsetSec ?? null,
     day: day ?? null,
+    srcWidth: w,
+    srcHeight: h,
+    aspect,
   };
 }
 app.get('/now-playing', async (_req, res) => {
@@ -1416,7 +1425,7 @@ app.get('/now-playing', async (_req, res) => {
     const sched = await pool.query('select id from schedules where channel=$1 and week=$2 and day=$3', [NP_CHANNEL, NP_WEEK, day]);
     if (sched.rows.length) {
       const items = (await pool.query(
-        `select a.id, a.file_name, a.description, a.thumbnail_url, a.duration_sec
+        `select a.id, a.file_name, a.description, a.thumbnail_url, a.duration_sec, a.src_width, a.src_height
            from schedule_items si join assets a on a.id = si.asset_id
           where si.schedule_id=$1 order by si.position asc`,
         [sched.rows[0].id]
@@ -1432,7 +1441,7 @@ app.get('/now-playing', async (_req, res) => {
       }
     }
     // No schedule row/items — still return the current asset's info.
-    const a = await pool.query('select id, file_name, description, thumbnail_url, duration_sec from assets where id=$1', [cur.assetId]);
+    const a = await pool.query('select id, file_name, description, thumbnail_url, duration_sec, src_width, src_height from assets where id=$1', [cur.assetId]);
     out.current = toShow(a.rows[0], cur.offsetSec, day);
     return res.json(out);
   } catch (e) {
