@@ -478,9 +478,14 @@ All services deploy as independent Docker containers on **Railway**. No `docker-
 | Service | Base Image | Port(s) | Healthcheck |
 |---------|-----------|---------|-------------|
 | Backend | `node:20-alpine` | 3000 | `GET /healthz` |
-| Streamer | `node:20-bullseye-slim` | 3001 | `GET /healthz` |
-| Transcoder | `node:20-bullseye-slim` | 3002 | `GET /healthz` |
-| Relay | `debian:bullseye-slim` | 8080, 1935 | `GET /healthz` |
+| Streamer | `node:20-bookworm-slim` | 3001 | `GET /healthz` |
+| Transcoder | `node:20-bookworm-slim` | 3002 | `GET /healthz` |
+| Relay | `debian:bookworm-slim` | 8080, 1935 | `GET /healthz` |
+
+Base images moved from bullseye to bookworm on 2026-09-11: bullseye-security's
+packages were pulled from every live Debian mirror and had not reached
+`archive.debian.org`, so `apt-get install ffmpeg` could not resolve. ffmpeg is
+now 5.1.x (was 4.3.x).
 
 **Startup sequence:**
 1. Backend runs migrations (`npm run migrate`) then starts Express

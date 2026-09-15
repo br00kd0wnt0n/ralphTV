@@ -5,6 +5,71 @@ History before 2026-09-10 is in `git log` (the project predates this file).
 
 ---
 
+## 2026-09-15 — ARCHITECT mode (docs only)
+
+**Session goal:** Answer "what's next", fold in two new asks from Brook.
+
+### Added
+- `docs/build-prompts/05-sandbox-environment.md` — on-demand sandbox of the
+  full stack on a `sandbox` Railway environment tracking a `sandbox` branch,
+  own S3 prefix. Decisions: on demand, own prefix (Brook). Findings that
+  shaped it: the transcoder hardcodes `normalized/<id>.mp4` so `S3_PREFIX`
+  alone doesn't isolate; asset delete never touches S3; a cloned
+  `stream_actions` table would auto-start the sandbox streamer via
+  `restoreDesiredState`.
+- Prompt 01 Part C — vertical-aspect content, marked priority. Verified: the
+  transcoder pads portrait sources to a 405x720 strip (32% of the frame,
+  downscaled from 1080); the immersive overlay uses `fit="contain"`; the
+  pixel-sampling auto-zoom exists only in ralphTV's `/embed` player, not in
+  ralph-world's `LivePlayer`. Recommended path is metadata-driven
+  (`src_width`/`src_height` at transcode → `/now-playing.aspect` → fit
+  switch), with the pixel detector as a spike/fallback. Full-res vertical
+  needs a second stream — scope only.
+- README: row 05, new order (01 → 05 → 02 → 04A → 03 → 04B), Railway CLI
+  gotchas, logins status.
+
+### Changed
+- `ARCHITECTURE.md` deployment table: bookworm base images (see 2026-09-11).
+
+### Open
+- Matt's Broadcaster login (manual, Data tab).
+- Parked branches, built and unmerged, awaiting a decision:
+  `perf/idle-preview-suspend` (suspend the admin preview when the tab is
+  hidden/idle — cuts origin + CDN pulls from parked tabs) and
+  `feature/instagram-live` (RTMPS bridge for attended Instagram Live events,
+  reverted from main 2026-08-21 before it was ever used). Merged-and-stale
+  remotes `fix/resume-channel-after-restart` and
+  `perf/private-networking-egress` can be deleted.
+
+---
+
+## 2026-09-11 — infrastructure (no persona session)
+
+### Added
+- `backend/scripts/create-user.mjs` + `npm run create:user` — role-scoped
+  account creation, same bcrypt/stdin pattern as `seed-admin.mjs`. Caveat
+  discovered the same day: `railway run` from a laptop cannot resolve
+  `postgres.railway.internal`, so it only works from inside Railway.
+  `nicola@ralph.world` and `guestadmin@ralph.world` (both admin) were added
+  by hand via the Railway Data tab with locally generated hashes.
+
+### Fixed
+- Relay, Transcoder and Streamer builds were failing on every push:
+  Debian bullseye-security's package files are gone from `deb.debian.org`
+  and `security.debian.org` and not yet in `archive.debian.org` (its
+  `debian-security/dists/` stops at buster). Two apt-source workarounds
+  (`Check-Valid-Until=false`, archive redirect) were tried and disproved by
+  the real build logs before migrating all three Dockerfiles to
+  `bookworm-slim` (`4d370db`). ffmpeg 4.3.9 → 5.1.9. Production was never
+  down — Railway kept serving the last good builds; the final cutover
+  self-healed (`streaming:true` within ~20s).
+
+### Learned
+- `railway logs --build --service X` returns the last *successful* build
+  when one exists; pass the failed deployment id to see the real error.
+
+---
+
 ## 2026-09-10 — ARCHITECT mode
 
 **Session goal:** Turn the Matt (BBC iPlayer) consultation next-steps into
