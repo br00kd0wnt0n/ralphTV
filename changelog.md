@@ -50,7 +50,7 @@ History before 2026-09-10 is in `git log` (the project predates this file).
   Written up as prompt 02 Part C, then built the same evening on branch
   `feat/resume-at-position` (see below).
 
-### Built — `feat/resume-at-position` (unmerged, awaiting deploy)
+### Shipped — resume where the feed left off (`f084cf9`, deployed 20:23 UTC, verified)
 - The streamer saves "which clip started when" through the backend
   (`PUT /streamer/state` → new `streamer_state` table, migration `0008`)
   every time the continuous loop spawns and again once background
@@ -69,8 +69,14 @@ History before 2026-09-10 is in `git log` (the project predates this file).
 - Verified: `-ss` into a concat list in copy mode, encode mode and across a
   file boundary with local ffmpeg; 14 unit scenarios against the real
   `planResume`/`computeContinuousCurrent`/`toPersistedState` source.
-  First deploy still restarts at item 0 once (the running build has saved
-  nothing yet).
+- Production verification (Brook pressed Restart, 20:27 UTC): position
+  `off=95` at 20:25:12 → Restart → back at 20:27:06 with `off=204` on the
+  same asset/slot; 114s of wall-clock had passed, so it resumed within ~5s
+  of true. Streamer log: `Resuming the day's list at item 1/23 (…) +204s`,
+  ffmpeg args `-re -ss 204 -f concat`. Dark air ~6s. Only Backend and
+  Streamer redeployed (watchPatterns held); migration `0008` applied on
+  backend boot. The first boot on the new code logged `no saved position`
+  and started at item 0, as expected.
 - Also fixed on `main` (`e6abf38`): the Broadcaster preview latched on the
   offline card after any relay restart — the status poll cleared its own
   interval when `relayAvailable` went false and nothing set it back.

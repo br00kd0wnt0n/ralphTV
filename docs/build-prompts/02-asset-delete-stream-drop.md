@@ -89,7 +89,14 @@ The delete was coincidental. Four real weaknesses this exposed:
   hook if `LibraryPanel.tsx` tips over 220 LOC.
 - No schema change (NO ACTION is the behaviour we want).
 
-### C. Resume where it left off after a restart (Brook, 2026-09-15 — required)
+### C. Resume where it left off after a restart — SHIPPED 2026-09-15 (`f084cf9`)
+
+**Done and verified in production** (see `changelog.md` 2026-09-15). Design 2
+below was built: saved position via `PUT /streamer/state` → `streamer_state`,
+`planResume()` + rotated play order + `-ss`. What remains from this section for
+the prompt-02 session is only the **restart-gap** work (soft reload) and
+confirming `restoreDesiredState` still resumes after your streamer deploy.
+The rest of this section is kept as the design record.
 
 Verified 2026-09-15: in continuous mode (production) every ffmpeg spawn
 starts the day's concat list from item 0 with
