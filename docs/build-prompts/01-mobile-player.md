@@ -1,5 +1,10 @@
 # Build prompt 01 — Fix the mobile Ralph TV player
 
+> **Status 2026-09-15.** Parts A/B shipped 2026-09-11 (see `~/ralph-world/changelog.md`).
+> Part C built 2026-09-15 on `ralph-world feat/vertical-content` +
+> `ralphTV feat/asset-source-dims` (metadata path + pixel fallback + tests);
+> only the full-resolution-vertical scoping note remains an open decision.
+
 **Repo:** `~/ralph-world` (the viewer-facing site) for parts A/B; Part C also
 touches `~/ralphTV` (transcoder, backend `/now-playing`). Run this session
 in ralph-world and open ralphTV alongside it.

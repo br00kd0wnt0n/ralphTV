@@ -10,7 +10,7 @@ session to re-verify before editing.
 
 | # | Prompt | Repo | Size | Why now |
 |---|--------|------|------|---------|
-| 01 | [Mobile player fix + vertical content](01-mobile-player.md) | `~/ralph-world` (+ `~/ralphTV` for Part C) | M | **Priority (Brook, 2026-09-15).** Rotate-closes-the-player bug, plus Part C: portrait clips are padded to a 405px strip and shown `contain` on phones. |
+| 01 | [Mobile player fix + vertical content](01-mobile-player.md) | `~/ralph-world` (+ `~/ralphTV` for Part C) | M | Parts A/B **shipped 2026-09-11** (ralph-world changelog). Part C (vertical clips) **built 2026-09-15** on `ralph-world feat/vertical-content` + `ralphTV feat/asset-source-dims`, awaiting deploy. Remaining: full-res vertical (needs a second stream — scoped, not built). |
 | 02 | [Stream-control safety + asset delete](02-asset-delete-stream-drop.md) | `~/ralphTV` | S | Investigation done (it was Stop/Start clicks, not the delete). Part C (resume where it left off after a restart) shipped 2026-09-15. Build half of A + B remains, plus the restart-gap soft reload. |
 | 03 | [Content metadata](03-content-metadata.md) | `~/ralphTV` | M | Unlocks search, filtering, collections, and the "warm-up" editorial layer Matt described. ~75 items to backfill. |
 | 04 | [Analytics](04-analytics.md) | both | Phase A: S, Phase B: M–L | CDN can't give session time. Phase A is GA events (quick); Phase B is an owned dashboard. |

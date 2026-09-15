@@ -85,6 +85,22 @@ History before 2026-09-10 is in `git log` (the project predates this file).
   `content-scheduler.css` 834/380, `LibraryPanel.tsx`, `LiveEmbedPlayer.tsx`)
   and six pre-existing type errors (`NodeJS.Timeout`, `HeadersInit`).
 
+### Built — `feat/asset-source-dims` (unmerged; Backend + Transcoder only)
+- Prompt 01 Part C, broadcaster half. Migration `0009`: `assets.src_width`,
+  `src_height` (rotation-aware source dims), `src_probe_error`. Transcoder
+  `probeSourceDims()` reads `tags.rotate` or `side_data_list[].rotation` and
+  swaps for ±90 — a 1920x1080 phone file rotated 90 is 1080x1920, which is
+  what ffmpeg's autorotate feeds our scale/pad (verified: it normalizes to a
+  405x720 strip). Each job stores the dims; an idle backfill probes one
+  un-probed asset per empty poll over a presigned GET (headers only, no
+  download; new dep `@aws-sdk/s3-request-presigner` pinned `3.920.0`).
+  `/now-playing` current/next gain `srcWidth`, `srcHeight`,
+  `aspect: 'portrait' | 'landscape' | null`; `/assets` returns the dims.
+  Consumer: ralph-world `feat/vertical-content` (zooms the immersive player to
+  the strip on phones; pixel fallback while `aspect` is null).
+- Correction to this morning's README: prompt 01 Parts A/B were already shipped
+  in ralph-world on 2026-09-11 (its changelog) — only Part C was open.
+
 ### Open
 - Matt's Broadcaster login (manual, Data tab).
 - Parked branches, built and unmerged, awaiting a decision:
