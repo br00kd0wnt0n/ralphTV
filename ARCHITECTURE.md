@@ -182,7 +182,7 @@ Determines which asset is currently playing based on schedule start time and ela
 | **Stack** | Node.js 20, raw `http.createServer`, FFmpeg |
 | **Port** | 3001 (default) |
 | **Source** | `streamer/src/index.js`, `streamer/src/config.js` |
-| **Docker** | `node:20-bullseye-slim` + FFmpeg |
+| **Docker** | `node:20-bookworm-slim` + FFmpeg |
 
 The streamer fetches the daily playlist from the backend API, downloads each video from S3, and streams to an RTMP target via FFmpeg.
 
@@ -225,7 +225,7 @@ The streamer fetches the daily playlist from the backend API, downloads each vid
 | **Stack** | Node.js 20, `pg`, `@aws-sdk/client-s3`, FFmpeg |
 | **Port** | 3002 (health only) |
 | **Source** | `transcoder/src/index.js` |
-| **Docker** | `node:20-bullseye-slim` + FFmpeg |
+| **Docker** | `node:20-bookworm-slim` + FFmpeg |
 
 Headless worker that polls the `normalize_jobs` table for pending work.
 
@@ -262,7 +262,7 @@ Headless worker that polls the `normalize_jobs` table for pending work.
 | **Stack** | Nginx + `ngx_rtmp_module` |
 | **Ports** | 8080 (HTTP), 1935 (RTMP) |
 | **Source** | `relay/nginx.conf.template`, `relay/entrypoint.sh`, `relay/monitor-stream.sh` |
-| **Docker** | `debian:bullseye-slim` + nginx + libnginx-mod-rtmp |
+| **Docker** | `debian:bookworm-slim` + nginx + libnginx-mod-rtmp |
 
 **RTMP server** (port 1935):
 - Application: `live`
