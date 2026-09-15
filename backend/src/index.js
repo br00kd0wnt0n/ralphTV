@@ -1295,9 +1295,41 @@ app.get('/streamer/desired-state', authMiddleware, async (_req, res) => {
       'select action from stream_actions order by created_at desc limit 1'
     );
     const lastAction = rows[0]?.action || null;
-    return res.json({ running: lastAction === 'start' || lastAction === 'restart', lastAction });
+    const running = lastAction === 'start' || lastAction === 'restart';
+    // Where the continuous loop was (written by the streamer via PUT /streamer/state),
+    // so a restart resumes the day at the right clip instead of item 0.
+    let state = null;
+    if (running) {
+      const st = await pool.query("select value from streamer_state where key = 'continuous'");
+      state = st.rows[0]?.value ?? null;
+    }
+    return res.json({ running, lastAction, state });
   } catch (e) {
     console.error('desired-state error', e?.message || e);
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// The streamer's saved playback position (see streamer restoreDesiredState /
+// planResume). Written with the service token; `{ value: null }` clears it (Stop).
+app.put('/streamer/state', authMiddleware, requireWrite, async (req, res) => {
+  const value = req.body?.value ?? null;
+  try {
+    if (value === null) {
+      await pool.query("delete from streamer_state where key = 'continuous'");
+      return res.json({ ok: true, cleared: true });
+    }
+    if (typeof value !== 'object' || Array.isArray(value) || JSON.stringify(value).length > 65536) {
+      return res.status(400).json({ message: 'Invalid state' });
+    }
+    await pool.query(
+      `insert into streamer_state (key, value, updated_at) values ('continuous', $1, now())
+       on conflict (key) do update set value = excluded.value, updated_at = now()`,
+      [JSON.stringify(value)]
+    );
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error('streamer state error', e?.message || e);
     return res.status(500).json({ message: 'Server error' });
   }
 });
