@@ -99,6 +99,7 @@ src/
 | GET | `/api/relay/destinations` | Proxy relay push destinations |
 | GET | `/api/relay/healthz` | Proxy relay health |
 | GET | `/api/system/status` | Aggregated status of all services |
+| GET | `/now-playing` | What the streamer is actually playing: `current`/`next` with `showName`, `description`, `thumbnailUrl`, `durationSec`, `offsetSec`, `day`, `srcWidth`, `srcHeight`, `aspect` (`portrait`/`landscape`/`null` until probed) |
 
 **Authenticated:**
 | Method | Path | Description |
@@ -315,6 +316,9 @@ assets
   norm_height    int
   norm_fps       int
   norm_bitrate   int
+  src_width      int                    -- 0009: source dims as displayed (rotation-aware),
+  src_height     int                    --       probed by the transcoder; portrait = pillarboxed
+  src_probe_error text                  -- set when a probe failed so the backfill skips it
 
 tags
   id             uuid PK

@@ -10,6 +10,10 @@ import path from 'node:path';
 console.log('==> Transcoder starting...');
 
 // Fail fast on missing required env vars
+// Presigned GETs for the source-dims backfill (ffprobe reads headers over HTTPS
+// instead of downloading each raw file). Same pinned SDK version as the backend.
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+
 const REQUIRED_ENV = ['DATABASE_URL', 'AWS_REGION', 'S3_BUCKET_UPLOADS'];
 const missing = REQUIRED_ENV.filter(k => !process.env[k]);
 if (missing.length) {
@@ -126,6 +130,72 @@ async function hasAudioStream(inPath) {
   });
 }
 
+// Source dimensions as DISPLAYED, i.e. after the rotation phones record in metadata.
+// A 1920x1080 file tagged rotate=90 is a portrait clip: ffmpeg's autorotate applies
+// that before our scale/pad, so the normalized output has the black pillars — and
+// this is what tells the players so. Accepts a local path or a (presigned) URL —
+// ffprobe only reads the headers, so probing over HTTPS is cheap. Never throws.
+async function probeSourceDims(input) {
+  return new Promise((resolve) => {
+    const p = spawn('ffprobe', [
+      '-v', 'error',
+      '-select_streams', 'v:0',
+      '-show_entries', 'stream=width,height:stream_tags=rotate:stream_side_data=rotation',
+      '-of', 'json',
+      input,
+    ]);
+    let stdout = '';
+    p.stdout.on('data', (d) => { stdout += d.toString(); });
+    p.on('exit', (code) => {
+      if (code !== 0) return resolve(null);
+      try {
+        const s = JSON.parse(stdout)?.streams?.[0];
+        let w = parseInt(s?.width, 10), h = parseInt(s?.height, 10);
+        if (!(w > 0 && h > 0)) return resolve(null);
+        // Older files: tags.rotate ("90"); newer: side_data_list[].rotation (-90 etc).
+        let rot = parseInt(s?.tags?.rotate, 10);
+        if (!Number.isFinite(rot)) {
+          const sd = (s?.side_data_list || []).find((x) => Number.isFinite(parseInt(x?.rotation, 10)));
+          rot = sd ? parseInt(sd.rotation, 10) : 0;
+        }
+        if (Math.abs(rot) % 180 === 90) [w, h] = [h, w];
+        resolve({ width: w, height: h });
+      } catch { resolve(null); }
+    });
+    p.on('error', () => resolve(null));
+  });
+}
+
+// One-at-a-time backfill of src_width/src_height for assets uploaded before the
+// column existed. Runs from the idle branch of the poll loop, so a transcode job
+// always takes priority. Probes the RAW object over a presigned URL (headers only —
+// no download). A failed probe is recorded in src_probe_error so it isn't retried
+// every pass. Returns true if it did some work.
+async function backfillOneSourceDims() {
+  const { rows } = await pool.query(
+    `select id, s3_key from assets
+      where src_width is null and src_probe_error is null and s3_key is not null
+      order by uploaded_at desc limit 1`
+  );
+  if (!rows.length) return false;
+  const a = rows[0];
+  try {
+    const url = await getSignedUrl(s3, new GetObjectCommand({ Bucket: BUCKET, Key: a.s3_key }), { expiresIn: 600 });
+    const dims = await probeSourceDims(url);
+    if (dims) {
+      await pool.query('update assets set src_width=$2, src_height=$3 where id=$1', [a.id, dims.width, dims.height]);
+      console.log(`==> Backfilled source dims for ${a.id}: ${dims.width}x${dims.height}${dims.height > dims.width ? ' (portrait)' : ''}`);
+    } else {
+      await pool.query('update assets set src_probe_error=$2 where id=$1', [a.id, 'ffprobe: no readable video stream']);
+      console.warn(`==> Could not probe source dims for ${a.id} (${a.s3_key}); marked`);
+    }
+  } catch (e) {
+    await pool.query('update assets set src_probe_error=$2 where id=$1', [a.id, String(e?.message || e).slice(0, 500)]).catch(() => {});
+    console.warn(`==> Source dims backfill failed for ${a.id}:`, e?.message || e);
+  }
+  return true;
+}
+
 async function normalize(inPath) {
   const out = path.join(os.tmpdir(), `ralphtv_norm_${Date.now()}.mp4`);
 
@@ -197,7 +267,7 @@ async function normalize(inPath) {
   return out;
 }
 
-async function uploadNorm(assetId, filePath) {
+async function uploadNorm(assetId, filePath, srcDims = null) {
   const key = `normalized/${assetId}.mp4`;
   // Stream from disk with a known ContentLength instead of fs.readFile, so a large
   // normalized file isn't loaded entirely into memory (was an OOM risk on Railway).
@@ -218,9 +288,13 @@ async function uploadNorm(assetId, filePath) {
     const u = bm[2].toLowerCase();
     normBitrateKbps = Math.round(u === 'm' ? n * 1000 : u === 'k' ? n : n / 1000);
   }
+  // src_width/src_height: the source's displayed dimensions (see probeSourceDims);
+  // left untouched when the probe failed so a later backfill can still fill them.
   await pool.query(
-    `update assets set s3_key_norm=$2, norm_status=$3, norm_error=null, norm_width=$4, norm_height=$5, norm_fps=$6, norm_bitrate=$7 where id=$1`,
-    [assetId, key, 'ready', TARGET_W, TARGET_H, FPS, normBitrateKbps]
+    `update assets set s3_key_norm=$2, norm_status=$3, norm_error=null, norm_width=$4, norm_height=$5, norm_fps=$6, norm_bitrate=$7,
+            src_width=coalesce($8, src_width), src_height=coalesce($9, src_height), src_probe_error=null
+      where id=$1`,
+    [assetId, key, 'ready', TARGET_W, TARGET_H, FPS, normBitrateKbps, srcDims?.width ?? null, srcDims?.height ?? null]
   );
   return key;
 }
@@ -253,6 +327,11 @@ async function loop() {
         if (pollCount === 1) {
           console.log('==> No jobs found on first poll. Waiting for jobs...');
         }
+        // Idle: use the gap to backfill source dimensions for older assets, one per
+        // pass (a real job always wins the next poll). Failures are logged and marked,
+        // never thrown — nothing here may stall the transcode loop.
+        try { await backfillOneSourceDims(); }
+        catch (e) { console.warn('==> Source dims backfill error:', e?.message || e); }
         const idleDelay = Math.min(2000 + (pollCount * 200), 10000);
         await new Promise(r => setTimeout(r, idleDelay));
         continue;
@@ -268,10 +347,12 @@ async function loop() {
       console.log(`==> Downloading ${asset.s3_key}...`);
       await pool.query('update assets set norm_status=$2 where id=$1', [job.asset_id, 'processing']);
       src = await downloadToTmp(asset.s3_key);
+      const srcDims = await probeSourceDims(src);
+      if (srcDims) console.log(`==> Source is ${srcDims.width}x${srcDims.height}${srcDims.height > srcDims.width ? ' (portrait — will be pillarboxed)' : ''}`);
       console.log(`==> Normalizing to ${TARGET_W}x${TARGET_H} @ ${FPS}fps...`);
       out = await normalize(src);
       console.log(`==> Uploading normalized file...`);
-      await uploadNorm(job.asset_id, out);
+      await uploadNorm(job.asset_id, out, srcDims);
       await doneJob(job.id);
       console.log(`==> Job ${job.id} completed successfully!`);
       pollCount = 0; // Reset after successful job
