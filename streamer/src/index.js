@@ -166,6 +166,10 @@ function ffmpegArgs(inputUrl, offsetSec = 0, useCopyMode = false) {
 }
 
 let RUNNING = false;
+// Where the continuous loop should pick up on its next spawn. Persisted through the
+// backend (streamer_state) so a redeploy, a Restart or the day-rollover reload lands
+// where the feed left off instead of replaying the day from item 0. See planResume.
+let RESUME_STATE = null;
 let CHILD = null;
 let CURRENT = null; // { assetId, index, startedAt, url }
 let CONTINUOUS_STATE = null; // { startedAt, sequence:[{assetId,durationSec}], slateBetweenSec }
@@ -561,14 +565,14 @@ function buildConcatLines(finalPaths, loopCount, slate) {
   return lines.join('\n');
 }
 
-async function buildContinuousList(items) {
+async function buildContinuousList(items, plan = null) {
   const toCleanup = [];
   const sessionId = String(Date.now());
 
   // 1) Resolve every URL + normalized flag first (fast — no downloads yet), and pick a
   //    DETERMINISTIC temp path per clip so we can write the concat list before the
   //    downloads finish.
-  const specs = [];
+  const ordered = [];
   let allNormalized = true;
   for (let i = 0; i < items.length; i++) {
     let u, isNorm = false;
@@ -581,18 +585,27 @@ async function buildContinuousList(items) {
       isNorm = info.normalized === true;
     }
     if (!isNorm) allNormalized = false;
-    specs.push({
-      i, url: u, isNorm,
-      path: path.join(os.tmpdir(), `ralphtv_cont_${sessionId}_${i}.mp4`),
+    ordered.push({
+      index: i, url: u, isNorm,
       assetId: items[i].assetId,
       durationSec: items[i].durationSec || 0,
     });
   }
 
+  // 2) Rotate the play order so the list STARTS at the clip that should be on air
+  //    (resume after a restart — see planResume). `index` stays the schedule position
+  //    (what /status reports); `i` is the position in the play order, which drives the
+  //    temp paths and the download order — so the resumed clip is the first one fetched.
+  const rot = plan ? Math.max(0, Math.min(ordered.length - 1, plan.index)) : 0;
+  const specs = rot ? [...ordered.slice(rot), ...ordered.slice(0, rot)] : ordered;
+  specs.forEach((s, i) => { s.i = i; s.path = path.join(os.tmpdir(), `ralphtv_cont_${sessionId}_${i}.mp4`); });
+  const seekSec = plan ? Math.max(0, plan.offsetSec || 0) : 0;
+  if (plan) console.log(`==> Resuming the day's list at item ${rot + 1}/${items.length} (${specs[0].assetId}) +${seekSec}s`);
+
   const slate = await ensureSlateLocal();
   const listPath = path.join(os.tmpdir(), `ralphtv_cont_${sessionId}.txt`);
   const loopCount = allNormalized ? 1000 : Math.max(1, CONTINUOUS_LOOPS);
-  const sequence = specs.map(s => ({ assetId: s.assetId, durationSec: s.durationSec }));
+  const sequence = specs.map(s => ({ assetId: s.assetId, durationSec: s.durationSec, index: s.index }));
 
   // Download (+optional normalize) one clip to its deterministic path.
   // Retries: a single failure used to be caught by the background loop, logged, and
@@ -649,9 +662,15 @@ async function buildContinuousList(items) {
         catch (e) { console.error(`==> background download failed for ${specs[i].assetId}:`, e?.message || e); }
       }
       console.log(`==> Background download complete: ${specs.length} clips on disk`);
+      // Durations are now the probed ones — refresh the saved position so a restart
+      // lands on the right second, not the scheduler's estimate.
+      if (CONTINUOUS_STATE) {
+        RESUME_STATE = toPersistedState(CONTINUOUS_STATE, items);
+        persistContinuousState(RESUME_STATE);
+      }
     };
     console.log(`==> Continuous list built — streaming now while ${specs.length - 1} clips download: ${specs.length} items, ${loopCount} loops`);
-    return { listPath, toCleanup, allNormalized, sequence, backgroundDownload };
+    return { listPath, toCleanup, allNormalized, sequence, backgroundDownload, rotation: rot, seekSec };
   }
 
   // SLOW PATH (needs local normalization): must produce every normalized file before
@@ -659,7 +678,70 @@ async function buildContinuousList(items) {
   for (const spec of specs) { if (!RUNNING) break; await prepareClip(spec); }
   await fs.writeFile(listPath, buildConcatLines(specs.map(s => s.finalPath), loopCount, slate), 'utf8');
   console.log(`==> Continuous list built: ${specs.length} items, ${loopCount} loops, allNormalized=${allNormalized}`);
-  return { listPath, toCleanup, allNormalized, sequence, backgroundDownload: null };
+  return { listPath, toCleanup, allNormalized, sequence, backgroundDownload: null, rotation: rot, seekSec };
+}
+
+// ---- Resume where the feed left off ------------------------------------------------
+// The continuous ffmpeg used to start the day's list from item 0 on every spawn, so a
+// redeploy, a Restart or the midnight reload replayed the day from the top. We now save
+// "which clip started when" through the backend and, on the next spawn, rotate the play
+// order to begin at the clip that should be on air and `-ss` into it. Saved shape:
+//   { day, anchorIndex, anchorStartedAt, assetIds, durations, slate, sessionStartedAt }
+// anchorIndex is the schedule position of the clip that began at anchorStartedAt (ms
+// epoch); the loop is walked forward from there, so clips before it never matter.
+function persistContinuousState(value) {
+  return fetch(`${CONFIG.API_BASE_URL}/streamer/state`, {
+    method: 'PUT',
+    headers: { ...headers(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ value: value ?? null }),
+    signal: AbortSignal.timeout(8000),
+  }).then((r) => { if (!r.ok) throw new Error(`streamer/state -> ${r.status}`); })
+    .catch((e) => console.warn('==> could not save resume position:', e?.message || e));
+}
+
+function toPersistedState(state, itemsInScheduleOrder) {
+  // Durations in schedule order, preferring the probed value from the live sequence
+  // (refreshed as clips finish downloading) over the scheduler's metadata.
+  const byIndex = new Map(state.sequence.map((s) => [s.index, s.durationSec]));
+  return {
+    day: state.day,
+    anchorIndex: state.rotation || 0,
+    anchorStartedAt: state.startedAt,
+    assetIds: itemsInScheduleOrder.map((it) => it.assetId),
+    durations: itemsInScheduleOrder.map((it, i) => byIndex.get(i) ?? (it.durationSec || 0)),
+    slate: state.slateBetweenSec || 0,
+    sessionStartedAt: SESSION_STARTED_AT,
+  };
+}
+
+// Where should today's list be right now, given what was saved? Returns
+// { index, offsetSec } in terms of the CURRENT items, or null to start from the top
+// (different day, nothing saved, or the saved clip is no longer scheduled).
+function planResume(items, saved, today) {
+  if (!saved || saved.day !== today || !Array.isArray(saved.assetIds) || !saved.assetIds.length) return null;
+  const n = saved.assetIds.length;
+  const durs = Array.isArray(saved.durations) ? saved.durations : [];
+  const slate = saved.slate || 0;
+  const loopDur = durs.reduce((a, d) => a + (d || 0) + slate, 0);
+  if (!(loopDur > 0) || !Number.isFinite(saved.anchorStartedAt)) return null;
+  let pos = ((Date.now() - saved.anchorStartedAt) / 1000) % loopDur;
+  if (!(pos >= 0)) pos = 0;
+  let k = -1, off = 0;
+  for (let j = 0; j < n; j++) {
+    const i = ((saved.anchorIndex || 0) + j) % n;
+    const d = durs[i] || 0;
+    if (pos < d) { k = i; off = pos; break; }
+    pos -= d;
+    if (pos < slate) { k = (i + 1) % n; off = 0; break; }
+    pos -= slate;
+  }
+  if (k < 0) return null;
+  // Map the saved clip onto today's items: same slot if the schedule is unchanged,
+  // otherwise wherever that asset now sits (an edited schedule keeps its place).
+  const id = saved.assetIds[k];
+  const index = items[k]?.assetId === id ? k : items.findIndex((it) => it.assetId === id);
+  if (index < 0) return null;
+  return { index, offsetSec: Math.max(0, Math.floor(off)) };
 }
 
 // In continuous mode ffmpeg plays one big concat, so there's no per-item callback.
@@ -673,12 +755,15 @@ function computeContinuousCurrent(state) {
   let pos = ((Date.now() - state.startedAt) / 1000) % loopDur;
   for (let i = 0; i < seq.length; i++) {
     const clipDur = seq[i].durationSec || 0;
+    // `index` is the clip's slot in the day's schedule (what the UI pins to); `pos` is
+    // its place in the play order, which differs when the list was rotated to resume.
+    const index = seq[i].index ?? i;
     if (pos < clipDur) {
-      return { assetId: seq[i].assetId, index: i, day: state.day, startedAt: Date.now() - Math.floor(pos * 1000), offsetSec: Math.floor(pos) };
+      return { assetId: seq[i].assetId, index, pos: i, day: state.day, startedAt: Date.now() - Math.floor(pos * 1000), offsetSec: Math.floor(pos) };
     }
     pos -= clipDur;
     if (pos < slate) {
-      return { assetId: seq[i].assetId, index: i, day: state.day, startedAt: Date.now() - Math.floor(clipDur * 1000), offsetSec: Math.floor(clipDur) };
+      return { assetId: seq[i].assetId, index, pos: i, day: state.day, startedAt: Date.now() - Math.floor(clipDur * 1000), offsetSec: Math.floor(clipDur) };
     }
     pos -= slate;
   }
@@ -690,7 +775,11 @@ async function streamContinuous(items) {
     ? (CONFIG.RTMP_TARGET || '').replace(/^rtmp:\/\//, 'rtmps://')
     : (CONFIG.RTMP_TARGET || '');
   const gen = STREAM_GENERATION; // capture before the (slow) download/build below
-  const { listPath, toCleanup, allNormalized, sequence, backgroundDownload } = await buildContinuousList(items);
+  const today = process.env.STREAMER_DAY || dayName();
+  // STREAMER_RESUME_POSITION=false is the no-code rollback: the channel still comes
+  // back after a restart (RUNNING is restored regardless), it just starts at item 0.
+  const plan = process.env.STREAMER_RESUME_POSITION === 'false' ? null : planResume(items, RESUME_STATE, today);
+  const { listPath, toCleanup, allNormalized, sequence, backgroundDownload, rotation, seekSec } = await buildContinuousList(items, plan);
 
   // The build takes several seconds to download all clips. If a control action
   // (Stop/Restart/test-signal) fired during that window, its cleanupStreamer() wiped
@@ -825,6 +914,14 @@ async function streamContinuous(items) {
       '-flvflags', 'no_duration_filesize', '-f', 'flv', '-rtmp_live', 'live', target,
     );
   }
+  // Resume: seek into the first clip of the (rotated) list. `-ss` is an input option,
+  // so it has to precede the concat `-i` — splice it in right after `-re`, which every
+  // mode above uses as its first input flag. Verified against ffmpeg's concat demuxer
+  // in both copy and encode modes (and across file boundaries) before shipping.
+  if (seekSec > 0) {
+    const at = args.indexOf('-re');
+    args.splice(at + 1, 0, '-ss', String(seekSec));
+  }
   // If a Stop/Restart/SIGTERM fired while we were downloading (it bumps
   // STREAM_GENERATION and wipes TEMP_FILES), the list now points at deleted files.
   // Abort before spawning so we don't crash-loop; the caller falls back cleanly.
@@ -839,7 +936,11 @@ async function streamContinuous(items) {
   console.log('ffmpeg continuous', args.join(' '));
   // Record the play sequence + start time + which day it is so /status can report the
   // real current clip AND the exact schedule day (an asset can appear on several days).
-  CONTINUOUS_STATE = { startedAt: Date.now(), sequence, slateBetweenSec: SLATE_BETWEEN_SEC, day: (process.env.STREAMER_DAY || dayName()) };
+  // startedAt is back-dated by the seek so the elapsed-time maths (/status, /now-playing)
+  // reports the true position inside the first clip.
+  CONTINUOUS_STATE = { startedAt: Date.now() - seekSec * 1000, sequence, slateBetweenSec: SLATE_BETWEEN_SEC, day: today, rotation };
+  RESUME_STATE = toPersistedState(CONTINUOUS_STATE, items);
+  persistContinuousState(RESUME_STATE);
   const buildDay = CONTINUOUS_STATE.day;
   let dayReload = false;
   await new Promise((resolve, reject) => {
@@ -868,7 +969,7 @@ async function streamContinuous(items) {
       const cur = computeContinuousCurrent(CONTINUOUS_STATE);
       if (cur && cur.index !== lastLoggedIndex) {
         lastLoggedIndex = cur.index;
-        const secs = Math.round(sequence[cur.index]?.durationSec || 0);
+        const secs = Math.round(sequence[cur.pos]?.durationSec || 0);
         console.log(`==> ON AIR [${cur.index + 1}/${sequence.length}] ${cur.assetId} (${secs}s)`);
       }
     }, 5000);
@@ -912,8 +1013,11 @@ async function restoreDesiredState() {
     });
     if (d?.running) {
       RUNNING = true;
-      SESSION_STARTED_AT = Date.now();
-      console.log(`==> Resuming channel after restart (last action: ${d.lastAction})`);
+      RESUME_STATE = (d.state && typeof d.state === 'object') ? d.state : null;
+      // Keep the session clock continuous across restarts when we know when it began.
+      SESSION_STARTED_AT = Number.isFinite(RESUME_STATE?.sessionStartedAt) ? RESUME_STATE.sessionStartedAt : Date.now();
+      const where = RESUME_STATE ? `saved position: ${RESUME_STATE.day}, anchor item ${(RESUME_STATE.anchorIndex || 0) + 1}` : 'no saved position';
+      console.log(`==> Resuming channel after restart (last action: ${d.lastAction}; ${where})`);
     } else {
       console.log(`==> Channel left idle after restart (last action: ${d?.lastAction ?? 'none'})`);
     }
@@ -1040,6 +1144,9 @@ async function main() {
       return;
     }
     if (req.url === '/control/start' && req.method === 'POST') {
+      // A fresh Start (after Stop, or an idle boot) begins at the top of the day; only
+      // a Restart or a self-heal resumes where the feed left off.
+      if (!RUNNING) RESUME_STATE = null;
       RUNNING = true;
       if (!SESSION_STARTED_AT) SESSION_STARTED_AT = Date.now();
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -1050,6 +1157,8 @@ async function main() {
       RUNNING = false;
       await cleanupStreamer();
       SESSION_STARTED_AT = null;
+      RESUME_STATE = null;
+      persistContinuousState(null); // Stop is deliberate: the next Start begins at item 0
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true }));
       return;

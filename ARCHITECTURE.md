@@ -366,7 +366,18 @@ stream_actions
   action         text NOT NULL          -- 'start' | 'stop' | 'restart'
   user_email     text NOT NULL
   created_at     timestamptz DEFAULT now()
+
+streamer_state                          -- 0008; one row, key 'continuous'
+  key            text PK
+  value          jsonb NOT NULL         -- { day, anchorIndex, anchorStartedAt, assetIds, durations, slate, sessionStartedAt }
+  updated_at     timestamptz DEFAULT now()
 ```
+
+`streamer_state` is the streamer's saved playback position: written with the
+service token via `PUT /streamer/state` on every continuous spawn (and again
+once background downloads have probed real durations), cleared with
+`{ value: null }` on Stop, and returned by `GET /streamer/desired-state` so a
+restarted streamer resumes the day where it left off rather than at item 0.
 
 ---
 
@@ -447,6 +458,9 @@ stream_actions
 | `STREAMER_MIN_SEC` | No | `0` | Skip items shorter than N seconds |
 | `STREAMER_MAX_RETRIES` | No | `1` | Max retries per item |
 | `STREAMER_DAY` | No | -- | Override current day name |
+| `STREAMER_RESUME` | No | `true` | On boot, ask the backend (`/streamer/desired-state`) whether the channel should be live and resume it. `false` = stay idle until Start |
+| `STREAMER_RESUME_POSITION` | No | `true` | Resume the day's list where it left off (saved via `PUT /streamer/state`). `false` = restart the day at item 0 (the pre-2026-09-15 behaviour) |
+| `STREAMER_AUTOSTART` | No | `false` | Fallback if the backend is unreachable at boot |
 
 ### Transcoder
 | Variable | Required | Default | Description |

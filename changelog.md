@@ -47,8 +47,37 @@ History before 2026-09-10 is in `git log` (the project predates this file).
   so a redeploy, the day-rollover reload and Restart all replay the day
   from the top. The main loop already fetches the wall-clock pointer
   (`/feed/…/now` → `computePointer`) and the continuous branch ignores it.
-  Written up as prompt 02 Part C (required): wall-clock anchor via `-ss`
-  on the concat list, target-clip-first download, `duration` directives.
+  Written up as prompt 02 Part C, then built the same evening on branch
+  `feat/resume-at-position` (see below).
+
+### Built — `feat/resume-at-position` (unmerged, awaiting deploy)
+- The streamer saves "which clip started when" through the backend
+  (`PUT /streamer/state` → new `streamer_state` table, migration `0008`)
+  every time the continuous loop spawns and again once background
+  downloads have probed real durations. `GET /streamer/desired-state` now
+  returns it. On the next spawn — redeploy, Restart, day-rollover reload —
+  `planResume()` works out which clip should be on air and how far in,
+  `buildContinuousList()` rotates the play order to start there (so that
+  clip is the first one downloaded) and ffmpeg gets `-ss <offset>` before
+  the concat `-i`. `computeContinuousCurrent()` reports the schedule slot
+  (`index`) regardless of rotation, so the Broadcaster's glow/playhead and
+  `/now-playing` are unchanged. Session clock survives restarts too.
+- Semantics: Stop clears the saved position (next Start = item 0); Restart
+  and self-heal resume; a new day starts at its top; an edited schedule
+  resumes at the same asset wherever it now sits; a removed asset falls
+  back to the top. Kill switch: `STREAMER_RESUME_POSITION=false`.
+- Verified: `-ss` into a concat list in copy mode, encode mode and across a
+  file boundary with local ffmpeg; 14 unit scenarios against the real
+  `planResume`/`computeContinuousCurrent`/`toPersistedState` source.
+  First deploy still restarts at item 0 once (the running build has saved
+  nothing yet).
+- Also fixed on `main` (`e6abf38`): the Broadcaster preview latched on the
+  offline card after any relay restart — the status poll cleared its own
+  interval when `relayAvailable` went false and nothing set it back.
+- Noted: `npm run lint` is red on `main` independently of today's work —
+  four files over the AGENTS.md hard size limits (`HlsPlayer.tsx` 483/260,
+  `content-scheduler.css` 834/380, `LibraryPanel.tsx`, `LiveEmbedPlayer.tsx`)
+  and six pre-existing type errors (`NodeJS.Timeout`, `HeadersInit`).
 
 ### Open
 - Matt's Broadcaster login (manual, Data tab).
