@@ -30,6 +30,25 @@ History before 2026-09-10 is in `git log` (the project predates this file).
 
 ### Changed
 - `ARCHITECTURE.md` deployment table: bookworm base images (see 2026-09-11).
+- `build.watchPatterns` in all five `railway.json` files. Until now every
+  push — docs included — rebuilt and restarted all five services; that is
+  how the 2026-09-11 `create:user` merge turned into three build failures
+  and a streamer restart. Now a push redeploys only services whose files
+  changed. Per Railway docs the patterns are gitignore-style and anchored
+  at the repo root even when a Root Directory is set; the frontend uses
+  `/**` minus the four service dirs, `docs/`, `scripts/`, `.claude/` and
+  root `*.md`. Verified: the docs-only commit after this one created no
+  deployments.
+
+### Investigated
+- Does the self-heal resume where the feed left off? **No** in continuous
+  mode: every spawn starts the day at item 0
+  (`CONTINUOUS_STATE.startedAt = Date.now()`, `streamer/src/index.js:842`),
+  so a redeploy, the day-rollover reload and Restart all replay the day
+  from the top. The main loop already fetches the wall-clock pointer
+  (`/feed/…/now` → `computePointer`) and the continuous branch ignores it.
+  Written up as prompt 02 Part C (required): wall-clock anchor via `-ss`
+  on the concat list, target-clip-first download, `duration` directives.
 
 ### Open
 - Matt's Broadcaster login (manual, Data tab).

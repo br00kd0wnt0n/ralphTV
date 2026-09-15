@@ -89,13 +89,52 @@ The delete was coincidental. Four real weaknesses this exposed:
   hook if `LibraryPanel.tsx` tips over 220 LOC.
 - No schema change (NO ACTION is the behaviour we want).
 
-### C. Optional — shorten the restart gap
-`/control/restart` stops ffmpeg, waits 800ms, then the main loop re-fetches
-the playlist and re-downloads before the next ffmpeg starts (~6–10s dark in
-the logs above, 15–20s as viewers see it via the relay's 12s idle
-threshold). A soft reload that builds the new concat list first and only
-then swaps ffmpeg would close most of it. Scope it in the changelog; build
-it only if Brook says so.
+### C. Resume where it left off after a restart (Brook, 2026-09-15 — required)
+
+Verified 2026-09-15: in continuous mode (production) every ffmpeg spawn
+starts the day's concat list from item 0 with
+`CONTINUOUS_STATE.startedAt = Date.now()` (`streamer/src/index.js:842`). A
+redeploy, the midnight day-rollover reload and the Restart button all
+restart the day from the top; `restoreDesiredState()` restores only
+`RUNNING`. The sequential mode already has a pointer: the main loop fetches
+`ptr = await now()` (`GET /feed/:channel/:week/:day/now` →
+`computePointer()` in `backend/src/feed.js`, a wall-clock position from the
+schedule's `play_start`) — the continuous branch (line ~1103) ignores it.
+
+Two designs. Pick one, say why in the changelog:
+
+1. **Wall-clock anchor (recommended — no new state).** Pass `ptr` and the
+   item durations into `streamContinuous`; offset = Σ durations[0..index)
+   + `ptr.offsetSec`; add `-ss <offset>` before `-i listPath` in every
+   continuous spawn variant (lines ~744/758/778) and set
+   `CONTINUOUS_STATE.startedAt = Date.now() - offset*1000` so `/status` and
+   `/now-playing` stay truthful. Behaviour change to confirm with Brook:
+   pressing Start at 15:00 joins the day where its loop would be by now
+   (like a TV channel), not at item 0 — `schedules.play_start` is the knob.
+2. **Persist the real position.** Streamer `PUT /streamer/position`
+   `{ day, startedAt, playlistHash }` on spawn (service token);
+   `/streamer/desired-state` returns it; on boot, same day + same hash →
+   resume at elapsed mod loop length. Keeps "Start = item 0". Needs a
+   migration (`0008`) and an endpoint.
+
+Either way:
+
+- `buildContinuousList` downloads item 0 first and streams while the rest
+  download in the background. A seek to item N hits a file that isn't on
+  disk yet. Download the **target** clip first, then the rest (wrapping), or
+  hold the spawn until the target exists.
+- `buildConcatLines` writes no `duration` directives, so the concat demuxer
+  opens every file before the seek point to find it — including files
+  still downloading. Emit `duration <sec>` per entry from `durationSec`;
+  seeking becomes O(1).
+- Copy mode seeks to the previous keyframe (normalized files have a 1s GOP,
+  so ≤1s early). Fine. ABR `encVariant` outputs re-encode and are unaffected.
+- Keep the restart-gap work: `/control/restart` stops ffmpeg, waits 800ms,
+  re-fetches and re-downloads before the next spawn (~6–10s dark in the
+  logs, 15–20s as viewers see it via the relay's 12s idle threshold). A soft
+  reload — build the new list first, then swap ffmpeg — closes most of it.
+- **Test on the sandbox (prompt 05).** This is exactly the streamer change
+  it exists for. Then off-peak to production.
 
 ## Acceptance criteria
 
@@ -105,6 +144,10 @@ it only if Brook says so.
 - Deleting a scheduled asset: 409 with days; force path shrinks those days,
   positions contiguous, second open tab updates without reload.
 - Failed delete restores the asset in the UI with a visible error.
+- Redeploying the streamer mid-clip: after `restoreDesiredState`,
+  `/status.current` reports the same asset within ±15s of where it was.
+  Restart lands where the schedule says. Day rollover still starts the new
+  day at its own pointer.
 - `npm run lint` passes; streamer `/status.sessionStartedAt` is unchanged
   across a test delete (`scripts/watch-stream.sh` prints nothing new).
 

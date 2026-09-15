@@ -11,7 +11,7 @@ session to re-verify before editing.
 | # | Prompt | Repo | Size | Why now |
 |---|--------|------|------|---------|
 | 01 | [Mobile player fix + vertical content](01-mobile-player.md) | `~/ralph-world` (+ `~/ralphTV` for Part C) | M | **Priority (Brook, 2026-09-15).** Rotate-closes-the-player bug, plus Part C: portrait clips are padded to a 405px strip and shown `contain` on phones. |
-| 02 | [Stream-control safety + asset delete](02-asset-delete-stream-drop.md) | `~/ralphTV` | S | Investigation done (it was Stop/Start clicks, not the delete). Build half remains. |
+| 02 | [Stream-control safety + asset delete](02-asset-delete-stream-drop.md) | `~/ralphTV` | S–M | Investigation done (it was Stop/Start clicks, not the delete). Build half remains, plus Part C: resume where it left off after a restart (today every restart replays the day from item 0). |
 | 03 | [Content metadata](03-content-metadata.md) | `~/ralphTV` | M | Unlocks search, filtering, collections, and the "warm-up" editorial layer Matt described. ~75 items to backfill. |
 | 04 | [Analytics](04-analytics.md) | both | Phase A: S, Phase B: M–L | CDN can't give session time. Phase A is GA events (quick); Phase B is an owned dashboard. |
 | 05 | [Sandbox broadcaster + player](05-sandbox-environment.md) | `~/ralphTV`, then `~/ralph-world` | M | On-demand copy of the stack on a `sandbox` Railway environment, own S3 prefix. The "staging test" `CLAUDE.md` asks for has never existed. |
