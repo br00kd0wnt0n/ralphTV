@@ -85,7 +85,7 @@ History before 2026-09-10 is in `git log` (the project predates this file).
   `content-scheduler.css` 834/380, `LibraryPanel.tsx`, `LiveEmbedPlayer.tsx`)
   and six pre-existing type errors (`NodeJS.Timeout`, `HeadersInit`).
 
-### Built — `feat/asset-source-dims` (unmerged; Backend + Transcoder only)
+### Shipped — source video orientation (`56c5d2a`, deployed 20:55 UTC; Backend + Transcoder only, streamer untouched)
 - Prompt 01 Part C, broadcaster half. Migration `0009`: `assets.src_width`,
   `src_height` (rotation-aware source dims), `src_probe_error`. Transcoder
   `probeSourceDims()` reads `tags.rotate` or `side_data_list[].rotation` and
@@ -96,8 +96,15 @@ History before 2026-09-10 is in `git log` (the project predates this file).
   download; new dep `@aws-sdk/s3-request-presigner` pinned `3.920.0`).
   `/now-playing` current/next gain `srcWidth`, `srcHeight`,
   `aspect: 'portrait' | 'landscape' | null`; `/assets` returns the dims.
-  Consumer: ralph-world `feat/vertical-content` (zooms the immersive player to
-  the strip on phones; pixel fallback while `aspect` is null).
+  Consumer: ralph-world `375c07c` (zooms the immersive player to the strip on
+  phones; pixel fallback while `aspect` is null). Verified after deploy:
+  `Applied 0009_asset_source_dims.sql`, six assets backfilled in the first
+  minute (all 1920x1080 so far), `/now-playing` → `aspect: landscape`,
+  `srcWidth 1920`, `srcHeight 1080` for the clip on air. Brook to judge how
+  soft the upscaled strip looks on a real phone before deciding on a second
+  vertical stream (cost estimate: ~+$15–30/mo typical, +$60 worst case —
+  streamer CPU for two more encodes plus origin egress for the extra ladder;
+  per-viewer CDN cost unchanged).
 - Correction to this morning's README: prompt 01 Parts A/B were already shipped
   in ralph-world on 2026-09-11 (its changelog) — only Part C was open.
 
