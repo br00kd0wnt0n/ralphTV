@@ -420,6 +420,7 @@ restarted streamer resumes the day where it left off rather than at item 0.
 | `S3_PREFIX` | No | `raw` | S3 key prefix |
 | `PRESIGN_TTL_MINUTES` | No | `10` | Presigned URL lifetime |
 | `MULTIPART_THRESHOLD_MB` | No | `100` | Multipart upload threshold |
+| `ENV_LABEL` | No | -- | Deployment name returned by `/healthz` (`{ ok, env }`), e.g. `sandbox` |
 
 ### Frontend (Vite)
 | Variable | Default | Description |
@@ -435,6 +436,7 @@ restarted streamer resumes the day where it left off rather than at item 0.
 | `VITE_RELAY_BASE_URL` | -- | Relay service URL |
 | `VITE_FALLBACK_GIF_URL` | -- | Offline fallback image |
 | `VITE_DISABLE_AUTH` | `false` | Skip auth wrapper |
+| `VITE_ENV_LABEL` | -- | Renders a warning strip above the header (e.g. `SANDBOX`). Build-time |
 
 ### Streamer
 | Variable | Required | Default | Description |
@@ -478,6 +480,7 @@ restarted streamer resumes the day where it left off rather than at item 0.
 | `VIDEO_BITRATE` | No | `2500k` | Video bitrate |
 | `AUDIO_BITRATE` | No | `160k` | Audio bitrate |
 | `PRESET` | No | `ultrafast` | FFmpeg preset |
+| `S3_PREFIX_NORM` | No | `normalized` | Key prefix for normalized output (`<prefix>/<assetId>.mp4`). Sandbox: `sandbox/normalized` |
 
 ### Relay
 | Variable | Default | Description |

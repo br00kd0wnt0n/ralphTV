@@ -38,6 +38,11 @@ const pool = new Pool({
 });
 const s3 = new S3Client({ region: process.env.AWS_REGION });
 const BUCKET = process.env.S3_BUCKET_UPLOADS;
+// Where normalized files go. Production keeps the historical `normalized/` prefix;
+// the sandbox environment sets `sandbox/normalized` so it can never write over a
+// production object (the backend's S3_PREFIX does the same for raw uploads).
+const NORM_PREFIX = (process.env.S3_PREFIX_NORM || 'normalized').replace(/^\/+|\/+$/g, '');
+console.log('==> S3_PREFIX_NORM:', NORM_PREFIX);
 const TARGET_W = parseInt(process.env.TARGET_WIDTH || '1280', 10);
 const TARGET_H = parseInt(process.env.TARGET_HEIGHT || '720', 10);
 const FPS = parseInt(process.env.FPS || '24', 10);
@@ -268,7 +273,7 @@ async function normalize(inPath) {
 }
 
 async function uploadNorm(assetId, filePath, srcDims = null) {
-  const key = `normalized/${assetId}.mp4`;
+  const key = `${NORM_PREFIX}/${assetId}.mp4`;
   // Stream from disk with a known ContentLength instead of fs.readFile, so a large
   // normalized file isn't loaded entirely into memory (was an OOM risk on Railway).
   const { size } = await fs.stat(filePath);

@@ -15,6 +15,11 @@ function App() {
 
   const body = (
     <>
+      {CONFIG.ENV_LABEL && (
+        <div className="env-strip" role="status">
+          {CONFIG.ENV_LABEL} — not the live channel
+        </div>
+      )}
       <div className="app-header">
         <img src="/ralph-tv-logo.png" alt="RalphTV" className="app-logo" />
         <h1>RalphTV BROADCASTER</h1>

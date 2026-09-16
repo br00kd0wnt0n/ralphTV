@@ -30,5 +30,8 @@ export const CONFIG = {
   RELAY_LANDSCAPE_PATH: import.meta.env.VITE_RELAY_LANDSCAPE_PATH || '/hls/stream.m3u8',
   RELAY_PORTRAIT_PATH: import.meta.env.VITE_RELAY_PORTRAIT_PATH || '/hls/stream_portrait.m3u8',
   FALLBACK_GIF_URL: ensureProtocol(import.meta.env.VITE_FALLBACK_GIF_URL || ''),
-  DISABLE_AUTH: (import.meta.env.VITE_DISABLE_AUTH ?? 'false') === 'true'
+  DISABLE_AUTH: (import.meta.env.VITE_DISABLE_AUTH ?? 'false') === 'true',
+  // Non-production deployments set this (e.g. "SANDBOX") to render a warning strip
+  // above the header, so nobody presses Stop on the wrong Broadcaster. Empty = prod.
+  ENV_LABEL: (import.meta.env.VITE_ENV_LABEL || '').trim(),
 };

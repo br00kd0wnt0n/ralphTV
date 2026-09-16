@@ -101,9 +101,11 @@ const SERVICE_TOKEN = process.env.SERVICE_TOKEN || '';
 const STREAMER_BASE_URL = (process.env.STREAMER_URL || '').replace(/\/$/, '');
 const STREAMER_CONTROL_TOKEN = process.env.STREAMER_CONTROL_TOKEN || '';
 
-// Health
-app.get('/healthz', (req, res) => res.json({ ok: true }));
-app.get('/health', (req, res) => res.json({ ok: true }));
+// Health. `env` names the deployment (ENV_LABEL, e.g. "sandbox") so a curl can tell
+// the sandbox backend from production; null in production.
+const ENV_LABEL = process.env.ENV_LABEL || null;
+app.get('/healthz', (req, res) => res.json({ ok: true, env: ENV_LABEL }));
+app.get('/health', (req, res) => res.json({ ok: true, env: ENV_LABEL }));
 
 // nginx-rtmp publish-auth callback (opt-in; wired via the relay's
 // RELAY_PUBLISH_AUTH_URL). nginx posts urlencoded fields including the publish query
