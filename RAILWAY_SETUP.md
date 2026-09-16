@@ -260,6 +260,84 @@ With `STREAMER_CONTROL_TOKEN` unset on the streamer, control endpoints stay open
 
 ---
 
+## Sandbox environment
+
+Built 2026-09-16 (build prompt 05). An isolated copy of the whole stack for
+trying content/scheduling/features without touching the 24/7 channel.
+Railway environments are fully isolated — separate compute, separate private
+network, separate database — so none of this can affect `production`.
+
+**Login:** `https://ralphtv-frontend-sandbox.up.railway.app` —
+`sandbox-admin@ralph.world` (password generated at setup time; ask Brook or
+regenerate via `railway variables --service Backend --environment sandbox
+--set "ADMIN_PASSWORD=<new>"` then redeploy Backend — see the link-switch
+dance below).
+
+**Service URLs:**
+
+| Service | URL |
+|---|---|
+| Frontend | `https://ralphtv-frontend-sandbox.up.railway.app` |
+| Backend | `https://backend-sandbox-f770.up.railway.app` |
+| Streamer | `https://streamer-sandbox.up.railway.app` |
+| Relay | `https://relay-sandbox.up.railway.app` |
+
+### How it was built
+
+1. `railway environment new sandbox --duplicate production` — creates a
+   second environment with its own copy of every service, including a
+   **brand-new Postgres instance** (confirmed empty: no tables at all
+   immediately after creation; Backend's own migration run then created the
+   schema fresh — `stream_actions`/`assets` both 0 rows, so
+   `restoreDesiredState()` never had anything to auto-resume).
+2. **Gotcha found immediately:** `--duplicate` copies `DATABASE_URL` as a
+   **literal string**, not a live reference — so Backend/Transcoder in the
+   new environment had the *old* production password pointed at the *new*
+   database and crash-looped (`password authentication failed`). Fixed by
+   reading the new Database service's actual current `DATABASE_URL` and
+   setting that explicitly on Backend + Transcoder in `sandbox` only. If you
+   duplicate an environment again, check this first —
+   `railway logs --service Backend --environment sandbox` will show
+   `28P01`/`auth_failed` if it's hit.
+3. Regenerated fresh secrets for `sandbox` (`JWT_SECRET`, `SERVICE_TOKEN`,
+   `STREAMER_CONTROL_TOKEN`, `ADMIN_PASSWORD`) and a distinct
+   `ADMIN_EMAIL=sandbox-admin@ralph.world` — the duplicate had copied
+   production's real admin email + password verbatim, which would have let
+   the production password work on the sandbox. Verified after: production
+   creds return 401 against the sandbox backend.
+4. Set per-service, sandbox only (see prompt 05's table for the full list):
+   `S3_PREFIX=sandbox/raw`, `S3_PREFIX_NORM=sandbox/normalized`,
+   `ENV_LABEL=sandbox`, `STREAMER_RESUME=false`, and each service's `*_URL`
+   vars pointed at the sandbox domains above (Railway had already generated
+   `-sandbox`-suffixed domains during duplication — `railway domain --service
+   X` reported "already exists" and printed them).
+5. Confirmed `RELAY_PUSH_1..5` were empty (nothing to accidentally push to a
+   real YouTube/Twitch key).
+6. **Still pending** (holding for an off-peak window — this part touches
+   `main`): merge `feat/sandbox-env-phase-a` (`S3_PREFIX_NORM`, `ENV_LABEL`,
+   the `VITE_ENV_LABEL` warning strip). Redeploys Backend/Transcoder/Frontend
+   only — Streamer and Relay are never touched by that merge, so the live
+   RTMP/HLS pipeline doesn't drop. Once merged: create a `sandbox` git branch
+   from `main` and point every sandbox service's Source at it (Railway
+   dashboard → Service → Settings → Source — the CLI has no way to change a
+   service's tracked branch), so unmerged streamer/relay changes can be
+   tested there before going to `main`.
+
+### CLI gotchas learned doing this
+
+- `railway redeploy` and `railway domain` don't take an `--environment` flag
+  — they act on whichever environment the CLI is currently linked to
+  (`railway status` shows it). `railway variables` **does** take
+  `--environment`, so prefer that form when possible; for the two commands
+  that don't, always `railway environment <name>` first, run `railway
+  status` to confirm the switch took, do the command, then switch back and
+  confirm again. Never run either while unsure which environment is linked.
+- `railway variables --set ... --skip-deploys` lets you stage several
+  variable changes across services before triggering one deliberate
+  redeploy round, rather than each `--set` kicking off its own rebuild.
+
+---
+
 ## Troubleshooting
 
 ### Login fails with "Authentication failed"
