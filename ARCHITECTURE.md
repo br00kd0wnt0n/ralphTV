@@ -53,6 +53,7 @@ Ralph TV is a multi-service video streaming platform that schedules, normalizes,
 | Path | Component | Auth |
 |------|-----------|------|
 | `/embed/*` | `LiveEmbedPlayer` | None |
+| `/stats` | `StatsPage` (viewer analytics) | Shared stats password (`STATS_PASSWORD`), not a Broadcaster login |
 | `/*` | `ContentScheduler` | JWT (unless `VITE_DISABLE_AUTH=true`) |
 
 **Key libraries:**
@@ -132,6 +133,19 @@ src/
 | GET | `/debug/normalized` | Normalization status of all assets |
 | GET | `/debug/schedule/:channel/:week/:day` | Schedule integrity check |
 | GET | `/api/debug/on-air` | Legacy on-air debug info |
+
+**Viewer analytics (`backend/src/analytics*.js`):**
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/analytics/events` | Public | Player event batch `{ session_id, surface, events[] }` (≤25). Allowlisted event names + props, bots dropped, rate-limited per session (120/min), per IP (600/min) and globally (6000/min); over-limit batches get 204 and are dropped. Accepts `text/plain` JSON for `sendBeacon`. ralph-world forwards here from `/api/broadcaster/events` with `X-Viewer-UA` / `X-Viewer-IP` (used, never stored). |
+| POST | `/analytics/login` | Public, login limiter | `{ password }` vs `STATS_PASSWORD` -> `{ token }` (JWT, `scope:'stats'`, 7 days). `authMiddleware` rejects stats tokens, so they open nothing else. |
+| GET | `/analytics/overview` | Stats token or admin JWT | `?from&to` (YYYY-MM-DD London, ≤92 days, default last 7) `&surface=tv\|home\|embed\|all`: KPIs, funnel by device, daily, hour-of-day, sources, devices, actions |
+| GET | `/analytics/shows` | Stats token or admin JWT | Same params: per-asset viewers, watch time, exits, median exit point, 10-bucket audience curve |
+| GET | `/analytics/live` | Stats token or admin JWT | Sessions with a heartbeat in the last 45s, by surface/device/asset |
+
+Definitions: a *visit* is one page load (in-memory session id); a *viewer* is a visit
+with ≥10s watched; watch seconds count only while a player video is playing and the
+tab is visible; heartbeats every 15 watched seconds carry the on-air asset and offset.
 
 **Admin only (auth + `role=admin`):**
 | Method | Path | Description |
@@ -375,7 +389,22 @@ streamer_state                          -- 0008; one row, key 'continuous'
   key            text PK
   value          jsonb NOT NULL         -- { day, anchorIndex, anchorStartedAt, assetIds, durations, slate, sessionStartedAt }
   updated_at     timestamptz DEFAULT now()
+
+viewer_events                           -- 0010; anonymous player analytics, purged after 90 days
+  id             bigserial PK
+  ts             timestamptz DEFAULT now()  -- server receive time
+  event          text NOT NULL          -- allowlist in analytics-ingest.js
+  session_id     uuid NOT NULL          -- one page load; never stored on the device
+  surface        text                   -- tv | home | embed
+  device, browser text                  -- coarse, parsed from UA at ingest (UA not stored)
+  asset_id       uuid                   -- on air at the time, if known
+  offset_sec, watch_sec int
+  muted          boolean
+  props          jsonb                  -- allowlisted: ref host, utm_*, is_guest, kind, on_arrival…
 ```
+
+No IP, user id, email or UA column. The backend purges rows older than
+`ANALYTICS_RETENTION_DAYS` one minute after boot and then daily.
 
 `streamer_state` is the streamer's saved playback position: written with the
 service token via `PUT /streamer/state` on every continuous spawn (and again
@@ -420,6 +449,9 @@ restarted streamer resumes the day where it left off rather than at item 0.
 | `S3_PREFIX` | No | `raw` | S3 key prefix |
 | `PRESIGN_TTL_MINUTES` | No | `10` | Presigned URL lifetime |
 | `MULTIPART_THRESHOLD_MB` | No | `100` | Multipart upload threshold |
+| `STATS_PASSWORD` | For /stats | -- | Shared password for the viewer stats page. Unset = stats login returns 503 |
+| `STATS_TOKEN_TTL` | No | `7d` | Lifetime of a stats login |
+| `ANALYTICS_RETENTION_DAYS` | No | `90` | Viewer events older than this are purged daily |
 
 ### Frontend (Vite)
 | Variable | Default | Description |
