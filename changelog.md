@@ -49,9 +49,16 @@ storage, no IP); mirror the same events to GTM.
   type errors and five oversize files are unchanged). New files all within
   AGENTS.md budgets.
 
+### Shipped (2026-11-03, ralphTV `6dda99b` / PR #4, ralph-world `a0c4c32` / PR #2)
+- Brook set `STATS_PASSWORD`. Verified in production: `/analytics/login`
+  answers 401 for a wrong password (not 503), `/stats` is in the deployed
+  bundle, a direct ingest returns 204 (so 0010 applied and inserts work),
+  ralph-world `/api/broadcaster/events` returns 204, and a real `/tv` visit
+  (`utm_source=deploy-check`, cookies declined) sent event batches. Channel
+  kept streaming through the backend restart. One `deploy-check` visit on the
+  TV surface and one on `embed` are test traffic.
+
 ### Not done / open
-- Not deployed. Needs `STATS_PASSWORD` on the backend service before `/stats`
-  can log in. Backend + frontend redeploy only; streamer/relay untouched.
 - Privacy policy line for the anonymous player stats (ralph-world legal page).
 - Shares and on-demand plays have reserved event names (`share`, `vod_play`,
   `back_to_live`) and labels on the stats page, but nothing sends them until
