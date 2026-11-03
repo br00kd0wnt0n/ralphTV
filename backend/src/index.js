@@ -17,6 +17,7 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { WebSocketServer } from 'ws';
 import { computePointer } from './feed.js';
+import { mountAnalytics, STATS_SCOPE } from './analytics.js';
 
 const app = express();
 // Behind Railway's proxy — trust the first hop so req.ip is the real client (needed
@@ -147,6 +148,8 @@ function authMiddleware(req, res, next) {
   try {
     // Pin the algorithm so a token can't downgrade to alg:none / RS256 confusion.
     const decoded = jwt.verify(bearer, _JWT_SECRET, { algorithms: ['HS256'] });
+    // Shared-password stats tokens only open /analytics/* (see analytics.js).
+    if (decoded.scope === STATS_SCOPE) return res.status(403).json({ message: 'Stats login cannot access the Broadcaster' });
     req.user = decoded;
     // Diagnostic: warn when a request rides in on a near-dead token — this is what a
     // long upload finishing just after its token expires looks like just before it fails.
@@ -205,6 +208,15 @@ app.post('/api/login', loginLimiter, async (req, res) => {
     console.error('login error', e);
     return res.status(500).json({ message: 'Server error' });
   }
+});
+
+// Viewer analytics: public ingest + shared-password stats API.
+mountAnalytics(app, {
+  pool,
+  jwtSecret: _JWT_SECRET,
+  loginLimiter,
+  recordLoginFailure,
+  clearLoginFailures: (ip) => failedLogins.delete(ip || 'unknown'),
 });
 
 app.get('/api/protected', authMiddleware, (req, res) => {

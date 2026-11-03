@@ -176,6 +176,7 @@ Visit: `https://your-frontend-url.railway.app`
 | `AWS_SECRET_ACCESS_KEY` | Your AWS secret | ✅ Yes |
 | `S3_BUCKET_UPLOADS` | Your S3 bucket name | ✅ Yes |
 | `CORS_ALLOWED_ORIGINS` | `*` (or specific domains) | Optional |
+| `STATS_PASSWORD` | Shared password for broadcaster.ralph.world/stats | For /stats |
 | `NODE_ENV` | `production` | Optional |
 | `PORT` | Auto-set by Railway | Auto |
 

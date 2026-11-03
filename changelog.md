@@ -5,6 +5,60 @@ History before 2026-09-10 is in `git log` (the project predates this file).
 
 ---
 
+## 2026-11-03 — ARCHITECT mode: owned viewer analytics + /stats page (prompt 04, both phases)
+
+**Session goal:** build the Ralph TV analytics/stats page Brook and Matt
+discussed (call notes, Oct/Nov): custom dashboard over GA, shared-password
+login, watch time / drop-off / device / sources, plus TV-page instrumentation
+to explain the high bounce rate. Decisions (Brook): `/stats` on the
+Broadcaster with one shared password; count everyone anonymously (no device
+storage, no IP); mirror the same events to GTM.
+
+### Added (branch `feat/viewer-analytics`, not merged)
+- Migration `0010_viewer_events.sql` — one row per player event; no IP, UA,
+  user id or email column. 90-day purge in the backend (`ANALYTICS_RETENTION_DAYS`).
+- `backend/src/analytics-ingest.js` (allowlist, UA -> device/browser, bot
+  filter, in-memory rate limits, batched insert), `analytics-queries.js` (pure
+  SQL: KPIs, funnel by device, daily, hour of day, sources, devices, actions,
+  per-show audience curve + exits, live now), `analytics.js` (routes + stats
+  auth). Mounted from `index.js`; `authMiddleware` now rejects `scope:'stats'`
+  tokens so the shared password opens `/analytics/*` only.
+- Frontend `/stats` (`src/components/stats/*`, `src/api/stats.ts`,
+  `src/state/statsFormat.ts`, `src/styles/stats.css`): login, live
+  "watching now", headline tiles (visits, viewers ≥10s, bounce, watch time,
+  median viewer), player signals (desktop sound-on rate, mobile tap rate,
+  gated-on-arrival, subscribe clicks), drop-off funnel by device, visits per
+  day, shows table with audience sparkline and typical exit point, hour of
+  day, sources (UTM, else referrer), actions, devices. Filters: Today / 7 /
+  30 / 90 days; TV page / homepage teaser / embed / all. Light + dark; inline
+  SVG, no chart library, no new dependencies.
+- Consumer half is in ralph-world (same branch name): tracker, hook, proxy
+  route — see its changelog.
+
+### Verified (local Postgres + local backend + ralph-world dev against live now-playing)
+- Migrations 0001–0010 apply clean on an empty DB. 140 synthetic sessions via
+  the real ingest; KPIs/funnel/sources/shows reconcile with the generator
+  (incl. a 30-visit zero-watch "spike" standing out in Sources).
+- Rejected: bad session id / surface (400), unknown events and props dropped,
+  long props truncated, bots 204 with no write. Stats token -> `/assets` and
+  schedule PUT 403; no token 401; wrong password 401; range > 92 days 400.
+- Real `/tv` page, cookies declined: page_view (UTM captured), tap_to_watch,
+  play_start, heartbeats every 15s with the on-air asset and advancing
+  offset, unmute, overlay_open(info), immersive_exit.
+- `npm run lint`: no new type errors or size failures (the six pre-existing
+  type errors and five oversize files are unchanged). New files all within
+  AGENTS.md budgets.
+
+### Not done / open
+- Not deployed. Needs `STATS_PASSWORD` on the backend service before `/stats`
+  can log in. Backend + frontend redeploy only; streamer/relay untouched.
+- Privacy policy line for the anonymous player stats (ralph-world legal page).
+- Shares and on-demand plays have reserved event names (`share`, `vod_play`,
+  `back_to_live`) and labels on the stats page, but nothing sends them until
+  the on-demand feature ships.
+- Oct 6 spike: not explainable from code. GA "direct" is usually email/chat
+  links. From now on Sources shows the referrer host and UTM per visit.
+
 ## 2026-09-15 — ARCHITECT mode (docs only)
 
 **Session goal:** Answer "what's next", fold in two new asks from Brook.

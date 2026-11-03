@@ -1,6 +1,7 @@
 import ContentScheduler from './components/ContentScheduler';
 import Protected from './auth/Protected';
 import LiveEmbedPlayer from './components/embed/LiveEmbedPlayer';
+import StatsPage from './components/stats/StatsPage';
 import { CONFIG } from './config';
 
 function App() {
@@ -11,6 +12,11 @@ function App() {
         <LiveEmbedPlayer />
       </div>
     );
+  }
+
+  // Viewer stats: its own shared-password login, not the Broadcaster's.
+  if (typeof window !== 'undefined' && window.location.pathname.replace(/\/+$/, '') === '/stats') {
+    return <StatsPage />;
   }
 
   const body = (

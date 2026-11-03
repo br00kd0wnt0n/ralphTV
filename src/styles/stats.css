@@ -1,0 +1,135 @@
+/* /stats — viewer analytics page. Standalone from the Broadcaster's dark theme:
+   own tokens, light + dark. Palette = dataviz reference slots 1–3 (validated). */
+.stats-root, .stats-login {
+  color-scheme: light;
+  --s-bg: #f4f3ef;
+  --s-card: #fcfcfb;
+  --s-line: #e4e2dc;
+  --s-text: #0b0b0b;
+  --s-text-2: #52514e;
+  --s-text-3: #7a7974;
+  --s-accent: #2a78d6;
+  --s-danger: #c2362f;
+  --viz-1: #2a78d6;
+  --viz-2: #eb6834;
+  --viz-3: #1baf7a;
+  --viz-muted: #cfcdc6;
+  --viz-area: rgba(42, 120, 214, 0.14);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .stats-root, :root:not([data-theme="light"]) .stats-login {
+    color-scheme: dark;
+    --s-bg: #121211;
+    --s-card: #1a1a19;
+    --s-line: #2c2c2a;
+    --s-text: #f0efec;
+    --s-text-2: #c3c2b7;
+    --s-text-3: #8e8d86;
+    --s-accent: #3987e5;
+    --s-danger: #e66767;
+    --viz-1: #3987e5;
+    --viz-2: #d95926;
+    --viz-3: #199e70;
+    --viz-muted: #4a4945;
+    --viz-area: rgba(57, 135, 229, 0.2);
+  }
+}
+
+.stats-root, .stats-login {
+  min-height: 100vh;
+  background: var(--s-bg);
+  color: var(--s-text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 1.4;
+  box-sizing: border-box;
+}
+.stats-root *, .stats-login * { box-sizing: border-box; }
+.stats-root { padding: 24px clamp(16px, 3vw, 40px) 48px; max-width: 1280px; margin: 0 auto; }
+.stats-root h1, .stats-login h1 { font-size: 22px; margin: 0; font-weight: 650; text-transform: none; letter-spacing: 0; color: var(--s-text); }
+.stats-root h2 { font-size: 15px; margin: 0 0 2px; font-weight: 650; text-transform: none; letter-spacing: 0; color: var(--s-text); }
+.stats-muted, .stats-sub { color: var(--s-text-2); margin: 0; }
+.stats-sub { font-size: 12.5px; margin-bottom: 14px; }
+.stats-empty { color: var(--s-text-3); margin: 8px 0; }
+.stats-error { color: var(--s-danger); margin: 8px 0; }
+.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* Header + filters */
+.stats-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+.stats-title { display: flex; align-items: center; gap: 12px; }
+.stats-logo { height: 40px; width: auto; }
+.stats-live { display: flex; align-items: center; gap: 10px; background: var(--s-card); border: 1px solid var(--s-line); border-radius: 12px; padding: 10px 16px; }
+.stats-live-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--s-text-3); }
+.stats-live-dot.on { background: #e34948; box-shadow: 0 0 0 4px rgba(227, 73, 72, 0.18); }
+.stats-live-n { font-size: 28px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.stats-live-text { display: flex; flex-direction: column; color: var(--s-text-2); }
+.stats-live-text small { color: var(--s-text-3); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.stats-filters { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 20px 0 16px; }
+.stats-seg { display: inline-flex; background: var(--s-card); border: 1px solid var(--s-line); border-radius: 10px; padding: 3px; }
+.stats-seg button { border: 0; background: transparent; color: var(--s-text-2); padding: 6px 12px; border-radius: 7px; font: inherit; cursor: pointer; }
+.stats-seg button[aria-pressed="true"] { background: var(--s-text); color: var(--s-card); }
+.stats-select { display: inline-flex; align-items: center; gap: 8px; color: var(--s-text-2); }
+.stats-select select { font: inherit; color: var(--s-text); background: var(--s-card); border: 1px solid var(--s-line); border-radius: 8px; padding: 6px 8px; }
+.stats-link { margin-left: auto; border: 0; background: none; color: var(--s-text-2); text-decoration: underline; cursor: pointer; font: inherit; }
+
+/* Layout */
+.stats-grid-layout { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.stats-wide { grid-column: 1 / -1; }
+.stats-card { background: var(--s-card); border: 1px solid var(--s-line); border-radius: 14px; padding: 18px 20px; min-width: 0; }
+@media (max-width: 860px) { .stats-grid-layout { grid-template-columns: minmax(0, 1fr); } }
+
+/* Tiles */
+.stats-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 12px; }
+.stats-tile { background: var(--s-card); border: 1px solid var(--s-line); border-radius: 14px; padding: 14px 16px; }
+.stats-tile-label { color: var(--s-text-2); font-size: 12.5px; }
+.stats-tile-value { font-size: 24px; font-weight: 650; margin: 2px 0; }
+.stats-tiles-hero .stats-tile-value { font-size: 34px; }
+.stats-tile-note { color: var(--s-text-3); font-size: 12px; }
+
+/* Charts */
+.stats-chart { position: relative; }
+.stats-chart svg { width: 100%; height: auto; max-width: 100%; display: block; overflow: visible; }
+.stats-grid { stroke: var(--s-line); stroke-width: 1; }
+.stats-tick { fill: var(--s-text-3); font-size: 11px; }
+.stats-tooltip { position: absolute; top: 0; transform: translateX(-50%); pointer-events: none; background: var(--s-text); color: var(--s-card); padding: 6px 10px; border-radius: 8px; font-size: 12px; white-space: nowrap; z-index: 2; }
+.stats-tooltip-title { font-weight: 650; }
+.stats-legend { display: flex; flex-wrap: wrap; gap: 14px; color: var(--s-text-2); font-size: 12.5px; margin: 8px 0; }
+.stats-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+
+/* Funnel */
+.stats-funnel-row { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 12px; align-items: center; padding: 6px 0; border-top: 1px solid var(--s-line); }
+.stats-funnel-label { color: var(--s-text-2); }
+.stats-funnel-bars { display: grid; gap: 2px; }
+.stats-funnel-bar { display: grid; grid-template-columns: minmax(0, 1fr) 44px; align-items: center; gap: 8px; height: 12px; }
+.stats-funnel-bar .stats-bar-fill { height: 10px; }
+.stats-funnel-value { font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; color: var(--s-text-2); }
+
+/* Bars + tables */
+.stats-bar-fill { display: block; height: 6px; border-radius: 0 4px 4px 0; background: var(--viz-1); min-width: 0; }
+.stats-bar-track { margin-top: 4px; }
+.stats-bar-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 320px; }
+.stats-table-wrap { overflow-x: auto; }
+.stats-table { width: 100%; border-collapse: collapse; }
+.stats-table th { text-align: left; font-weight: 500; color: var(--s-text-3); font-size: 12px; padding: 6px 8px; border-bottom: 1px solid var(--s-line); }
+.stats-table th.num { text-align: right; }
+.stats-table th button { border: 0; background: none; color: inherit; font: inherit; cursor: pointer; padding: 0; }
+.stats-table th button.on { color: var(--s-text); }
+.stats-table td { padding: 8px; border-bottom: 1px solid var(--s-line); vertical-align: middle; }
+.stats-table tr:last-child td { border-bottom: 0; }
+.stats-bartable td:first-child { width: 60%; }
+.stats-show-name { display: flex; align-items: center; gap: 8px; min-width: 220px; }
+.stats-show-name i { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.stats-spark { width: 120px; height: 28px; display: block; }
+.stats-spark-line { fill: none; stroke: var(--viz-1); stroke-width: 2; stroke-linejoin: round; }
+.stats-spark-area { fill: var(--viz-area); }
+
+/* Login */
+.stats-login { display: grid; place-items: center; padding: 16px; }
+.stats-login .stats-card { width: min(360px, 100%); display: flex; flex-direction: column; gap: 10px; }
+.stats-login h1 { font-size: 20px; margin: 0 0 6px; }
+.stats-login-logo { height: 48px; width: auto; align-self: flex-start; }
+.stats-login label { color: var(--s-text-2); font-size: 13px; }
+.stats-login input { font: inherit; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--s-line); background: var(--s-bg); color: var(--s-text); }
+.stats-login button { font: inherit; font-weight: 600; padding: 10px 12px; border-radius: 8px; border: 0; background: var(--s-accent); color: #fff; cursor: pointer; }
+.stats-login button:disabled { opacity: 0.5; cursor: default; }
